@@ -576,17 +576,94 @@ nrow(unique(transactions_data_up[,c("SENDER_ACCOUNT_ID", "RECEIVER_ACCOUNT_ID")]
 
 # 2.2 defining weight value for transactions - aggregating the transaction by summing their amounts
 
+# Note: The below code gives a weight to a directed graph, therefore the sender-receiver weight can be different than the same receiver-sender weight. Look the code chunk starting at 2.2.1 
 
-transactions_data_up <- aggregate(transactions_data_up[,5], transactions_data_up[,-5], sum)
-transactions_data_up <- transactions_data_up[order(transactions_data_up$SENDER_ACCOUNT_ID,transactions_data_up$RECEIVER_ACCOUNT_ID),]
+# transactions_data_up <- aggregate(transactions_data_up[,5], transactions_data_up[,-5], sum)
+# transactions_data_up <- transactions_data_up[order(transactions_data_up$SENDER_ACCOUNT_ID,transactions_data_up$RECEIVER_ACCOUNT_ID),]
+# 
+# colnames(transactions_data_up)[9] <- "weight"
+# rownames(transactions_data_up) <- NULL
 
-colnames(transactions_data_up)[9] <- "weight"
-rownames(transactions_data_up) <- NULL
+
+# 2.2.1 Defining unique client-pair ID's
+
+# Note: for now, we will assume that the wight between two nodes connected by an edge are the same and that the weight is calculated as the sum of the transaction amount between the two nodes.
+
+# Note: we are working from the basis of sender-receiver, therefore if we have the case where the concatenate the receiver sender and it is the same as the sender-receiver, we know it is not a unique pair
+
+# Gustav's way - not working
+# # adding sender-receiver and receiver-sender ID combos to transaction df 
+# transactions_data_up_combos <- transactions_data_up %>% 
+#   mutate(id_combo_sender_receiver = paste0(SENDER_ACCOUNT_ID,RECEIVER_ACCOUNT_ID),
+#          id_combo_receiver_sender = paste0(RECEIVER_ACCOUNT_ID,SENDER_ACCOUNT_ID)) #%>% 
+#  #mutate(duplicates = if_else(id_combo_receiver_sender %in% id_combo_sender_receiver, T,F) )
+# 
+# # creating a data frame that contains all the unique client-pairs 
+# combo_ids_combined <- data.frame(combo_ids = c(transactions_data_up_combos$id_combo_sender_receiver, transactions_data_up_combos$id_combo_receiver_sender)) %>% 
+#   unique()
+# 
+# # assigning each client pair with a new ID
+# combo_ids_combined <- combo_ids_combined %>% 
+#   mutate(client_pair_id = 1:nrow(combo_ids_combined)) %>% 
+#   rename(id_combo_sender_receiver = combo_ids)
+# 
+# # joining client ID's to the 
+# transactions_data_up_client_pairs <- left_join(transactions_data_up_combos, combo_ids_combined, by = "id_combo_sender_receiver") %>% 
+#   select(-c(id_combo_sender_receiver,id_combo_receiver_sender))
+
+
+# i-graph implementation: generating un-directed network and then converting back to data frame to calculate weights and defining send-receive combo
+transactions_data_up_paired <- unique(as_data_frame(graph_from_data_frame(transactions_data_up, directed=FALSE), "edges")) %>%
+  mutate(send_receive_id_combo = paste0(from,"-",to))
+  
+
+# number of unique client pairs
+unique_client_pairs <- transactions_data_up_paired[,c("from", "to")] %>%
+  unique()
+  
+# configuring weights of network - attribute of edges
+
+# Note: The weight is currently determined by the total transaction amount that occurred between the parties
+
+edge_weights <- transactions_data_up_paired %>% 
+  group_by(from, to) %>% 
+  summarise(weight = sum(TX_AMOUNT)) %>% 
+  mutate(send_receive_id_combo = paste0(from,"-",to))
+  
+
+edge_weights <- edge_weights[,-c(1,2)]
+
+# joining to transactional
+
+transactions_data_weighted <- left_join(transactions_data_up_paired, edge_weights, by = "send_receive_id_combo") %>% 
+  unique()
+
+
+# Et: should I normalise the weight?  
+
+# Visualizing weights
+
+# boxplot
+boxplot(log(transactions_data_weighted$weight))
+
+# histogram
+ggplot(transactions_data_weighted, aes(x= weight)) +
+  geom_histogram() +
+  scale_y_log10()
+
+
+# Note: the weights seem strange so the I tested them using:
+# test <- transactions_data_up_paired %>% 
+#   filter(from == "7123" & to == "9637")
+
 
 # 2.3 turning df's into igraph objects
 
-AML_net <- graph_from_data_frame(d = transactions_data_up,
-                                 vertices = accounts_data_raw)
+AML_net <- graph_from_data_frame(d = transactions_data_weighted,
+                                 vertices = accounts_data_raw,
+                                 directed = FALSE)
+
+# Note: That the we are constructing a un-directed graph
 
 # 2.4 Inspecting graph created object
 
@@ -610,31 +687,141 @@ E(AML_net)$IS_FRAUD # how to subset edge network attributes
 
 #plot(AML_net, vertex.label = F, layout = layout_with_lgl)
 
-# Note: An EDA of the global features of the network kan be done or global metrics can be used as indicators of the networks evolution.
+# Note: An EDA of the global features of the network kan be done or global metrics can be used as indicators of the networks evolution (can also be done for fraud and non-fraud)
 
 
 # 3. Populating feature dataframe of network metrics (local features)
 
+# creating netork feature data frame
+network_feature_df <- data_frame(ACCOUNT_ID = accounts_data_raw$ACCOUNT_ID)
 
-# 3.1 Transitivity - (local) ratio of triangles to connected triples each vertex is part of.
+# 3.1 Neighbourhood metrics
+
+# 3.1.1 Transitivity - (local) ratio of triangles to connected triples each vertex is part of. Can be interpreted as a probability for the network to have adjacent nodes interconnected, thus revealing the existence of tightly connected communities (or clusters, subgroups, cliques).
 
 transitivity_loc <- transitivity(AML_net, type="local")
 
+
+# Note: If a node has a degree of zero then the transitivity will be NaN. Think of a way how you can treat this.
+
 # transforming all NaN values to zero
+#transitivity_loc[is.na(transitivity_loc)] <- 0
 
-transitivity_loc[is.na(transitivity_loc)] <- 0
+# adding transitivity to df
+network_feature_df$transitivity_local <- transitivity_loc
 
-# Note: what is an appropriate scaling method? Maybe we should first scale when we have all the mretrics?
+# 3.1.2 Degree (local)
+
+# Note: This will be the total degree, Baesens et al. (2015) splitted the total degree into: total fraud and total legit degree
+
+total_degree_loc <- degree(AML_net, loops = F)
+
+# degree visualisations:
+
+# histogram
+hist(total_degree_loc, breaks=1:vcount(AML_net)-1, main="Histogram of Total Node Degree", xlab = "Total Degree")
+
+# density plot
+d <- density(total_degree_loc, breaks=1:vcount(AML_net)-1)
+plot(d, main="Density distribution of node degree")
+
+# adding total degree to df
+network_feature_df$total_degree_local <- total_degree_loc
+
+# 3.1.2 Cocitation coupling (local) - siply counts how many types two vertices are cocited (there is another vertex citing both of them).
+
+cocitation_loc <- cocitation(AML_net)
+
+# adding total degree to df
+network_feature_df$cocitation_count <- cocitation_loc
+
+# 3.2 Centrality metrics
+
+# 3.2.1 Closeness centrality - Measures the average farness (inverse distance) to all other nodes. Nodes with a high closeness score have the shortest distances to all other nodes.
+
+centrality_closeness_loc <- closeness(AML_net, normalized = T) # takes +/- 10 mins
+
+# Note: We need to standardize to get the average farness. This metric, by default, also uses the weighted features.
+
+# adding closeness centrality to df
+network_feature_df$centrality_closeness <- centrality_closeness_loc
+
+# 3.2.2 Eigenvector centrality - Eigenvector centrality scores correspond to the values of the first eigenvector of the graph adjacency matrix; these scores may, in turn, be interpreted as arising from a reciprocal process in which the centrality of each actor is proportional to the sum of the centralities of those actors to whom he or she is connected.
+
+centrality_eigen_loc <- eigen_centrality(AML_net,
+                                         scale = T,
+                                         directed=F)
+
+# Note: edge weights are incorporated in calculation
+
+# adding closeness centrality to df
+network_feature_df$centrality_eigen_vector <- centrality_eigen_loc$vector
 
 
-node_0_graph <- make_ego_graph(AML_net,
-                               order = 3,
-                               nodes = 1,
-                               mode = "all")
+# 3.2.3 betweeness - the number of geodesics (shortest paths) going through a vertex or an edge
+
+centrality_betweenness_loc <-  betweenness(AML_net, 
+                                           directed=F)
+
+# adding betweenness centrality to df
+network_feature_df$centrality_betweenness <- centrality_betweenness_loc # takes +/- 10 mins
 
 
+# Note: edge weights are incorporated in calculation
+
+# 3.2.4 Kleinberg's hub and authority centrality scores - defined as the principal eigenvector of t(A)*A, where A is the adjacency matrix of the graph.
+
+centrality_hub_score_loc <- hub_score(AML_net,
+                                  scale = T)
+
+# Note: For un-directed networks the hub authority scores are the same. If a directed network is implemented we can calculate both. 
+
+# adding Kleinberg's hub/authority score centrality to df
+network_feature_df$centrality_hub_score <- centrality_hub_score_loc$vector
+
+# 3.3 Distances and Paths
+
+# 3.3.1  Geodesic - length of all shortest paths
+
+geodesic_loc <- distances(AML_net,
+                          algorithm = "automatic") #Big NXN matrix
+
+# Note: edge weights are incorporated in calculation
+
+avg_geodesic_loc <- mean_distance(AML_net,
+                                  directed = F,
+                                  unconnected = T) # removing first row since it is not connected 
+
+# adding avg_geodesic to df
+network_feature_df$avg_geodesic <- avg_geodesic_loc
+
+# 3.4 Triangles - Count how many triangles a vertex is part of, in a graph, or just list the triangles of a graph.
+
+triangles_loc <- count_triangles(AML_net)
+
+# Note: This will be the total triangles Baesens et al. (2015) broke this up into: total fraud triangles, total legit triangles, and total semi-fraud triangles. 
+
+# adding triangles to df
+network_feature_df$triangles <- triangles_loc
+
+# 3.5 Inference algorithms 
+
+# 3.5.1 PageRank
+
+pr <- page_rank(AML_net,
+                algo = "prpack",
+                directed = F,
+                damping = 0.85) 
+
+# Note: Look at what damping factors are suitable and how it should be chosen
+
+# adding PageRank to df
+network_feature_df$page_rank <- pr$vector
 
 
+# wrinting csv
+
+write.csv(as.data.frame(network_feature_df), file = "gustav_preliminary_network_features.csv")
 
 ```
 
