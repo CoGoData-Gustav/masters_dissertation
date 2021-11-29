@@ -17,10 +17,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(stringr)
 library(lubridate)
+library(plyr)
 
 # 2. Network Analytics
 library(igraph)
 library(Matrix)
+
+
 
 
 ```
@@ -32,7 +35,6 @@ library(Matrix)
 
 # Note: There is three separate data files: i) accounts, ii) alerts, iii) transactions
 
-
 # 1. Accounts
 accounts_data_raw <- read.csv("accounts.csv")
 
@@ -43,10 +45,119 @@ alerts_data_raw <- read.csv("alerts.csv")
 transactions_data_raw <- read.csv("transactions/transactions.csv")
 
 
+### Un-directed weighted network Test and validation purposes ###
+
+# Constructing sample network used by Bart Baesens et al. (Fraud Analytics book) - Undirected network & Undirected weighted network
+
+
+# 1. Configuring sample edge and node df's
+
+# nodes (i.e customer's accounts)
+node_df <- data.frame(client_ID = LETTERS[1:20],
+                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, rep(F,11)))
+
+# edges (i.e customers transactions)
+edge_df <- data.frame(from = c("A","A", "A", "A", "A", "A", "D", "D", "D", "D", "Q", "Q", "Q", "N","N", "N", "I", "I", "K", "K", "O", "B", "F", "F", "M"),
+                      to = c("I", "T", "B", "H", "O", "G", "G", "B", "E", "F", "R", "S", "O", "M", "L", "I", "K", "G", "J", "H", "P", "C", "G", "E", "L"),
+                      weight = rexp(25,0.001))
+
+
+# 2. Building sample network
+
+sample_network <- graph_from_data_frame(d = edge_df,
+                                 vertices = node_df,
+                                 directed = FALSE)
+
+# visualizing the graph
+
+fraud_colour <- if_else(V(sample_network)$is_fraud == T, "red", "green")
+V(sample_network)$color <- fraud_colour
+E(sample_network)$width <- 1+E(sample_network)$weight/250
+plot(sample_network)
+
+### Un-directed weighted network Test and validation purposes ###
+
+### directed network Test and validation purposes ###
+
+ # Test 1
+
+# 1. Configuring sample edge and node df's
+
+# nodes (i.e customer's accounts)
+node_df <- data.frame(client_ID = LETTERS[1:20],
+                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, rep(F,11)))
+
+# edges (i.e customers transactions)
+edge_df <- data.frame(from = c("A","A", "A", "A", "A", "A", "D", "D", "D", "D", "Q", "Q", "Q", "N","N", "N", "I", "I", "K", "K", "O", "B", "F", "F", "M"),
+                      to = c("I", "T", "B", "H", "O", "G", "G", "B", "E", "F", "R", "S", "O", "M", "L", "I", "K", "G", "J", "H", "P", "C", "G", "E", "L"),
+                      weight = rexp(25,0.001))
+
+
+# 2. Building sample network
+
+sample_network <- graph_from_data_frame(d = edge_df,
+                                 vertices = node_df,
+                                 directed = TRUE)
+
+# visualizing the graph
+
+fraud_colour <- if_else(V(sample_network)$is_fraud == T, "red", "green")
+V(sample_network)$color <- fraud_colour
+E(sample_network)$arrow.size <- 0.45
+
+plot(sample_network)
+
+
+ # Test 2
+# 1. Configuring sample edge and node df's
+
+# nodes (i.e customer's accounts)
+node_df <- data.frame(client_ID = LETTERS[1:10],
+                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, F)) 
+
+# edges (i.e customers transactions)
+edge_df <- data.frame(from = c("A", "A", "A", "A", "B", "B", "B", "C", "C", "D", "G", "G", "H", "H", "H", "J"),
+                      to = c("B", "B", "F", "G", "A", "E", "I", "B", "B", "C", "H", "H", "G", "J", "I", "H"),
+                      weight = c(10, 20, 5, 10, 10, 25, 5, 15, 15, 10, 20, 20, 5, 10, 15, 20) )
+
+
+# 2. Building sample network
+
+sample_network_directed <- graph_from_data_frame(d = edge_df,
+                                 vertices = node_df,
+                                 directed = T)
+
+# visualizing the graph
+
+fraud_colour <- if_else(V(sample_network_directed)$is_fraud == T, "red", "green")
+V(sample_network_directed)$color <- fraud_colour
+E(sample_network_directed)$arrow.size <- 0.5
+#E(sample_network)$width <- 1+E(sample_network)$weight/250
+plot(sample_network_directed)
+
+
+### directed network Test and validation purposes ###
+
+### transaction extraction purposes ###
+# 1. Configuring sample edge and node df's
+
+# nodes (i.e customer's accounts)
+node_df <- data.frame(client_ID = LETTERS[1:20],
+                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, rep(F,11)))
+
+# edges (i.e customers transactions)
+edge_df <- data.frame(from = c("A","A", "B", "H", "O", "G", "D", "D", "E", "F", "Q", "S", "O", "M","N", "I", "I", "G", "K", "H", "O", "B", "F", "E", "M"),
+                      to = c("I", "T", "A", "A", "A", "A", "G", "B", "D", "D", "R", "Q", "Q", "N", "L", "N", "K", "I", "J", "K", "P", "C", "G", "F", "L"),
+                      weight = rexp(25,0.001))
+
+
+### transaction extraction purposes ###
+
+
 
 ```
 
-# 2. Prelimimary exploratory data analysis of each data set (raw data)
+# 2. Pre-local-EDA of each raw data table
 
 ```{r, prelimimary exploratory data analysis of each data set }
 
@@ -230,305 +341,9 @@ transactions_data_honest <- transactions_data_raw %>%
          
 ```
 
+# 3. Feature Extraction
 
-# 2. Network analysis with igraph (Simulated AML data)
-
-# X. NetSciX 2016 School of Code Workshop (Just for refrence - not to include)
-
-```{r, NetSciX 2016 School of Code Workshop}
-
-# 1. Getting data sets ready
-
-# 1.1 date set 1 - Media examples - unipartite graph
-nodes <- read.csv("igraph_workshop_data/Dataset1-Media-Example-NODES.csv", header=T, as.is=T)
-links <- read.csv("igraph_workshop_data/Dataset1-Media-Example-EDGES.csv", header=T, as.is=T)
-
-# 1.2 examining data set
-nrow(nodes)
-length(unique(nodes$id))
-nrow(links)
-nrow(unique(links[,c("from", "to")])) # unique connections
-
-# note: Because there is more links than unique link pairs we will aggregate their weight
-
-# note: can also use dplr commands
-links <- aggregate(links[,3], links[,-3], sum)
-links <- links[order(links$from, links$to),]
-colnames(links)[4] <- "weight"
-rownames(links) <- NULL
-
-# 1.3 data set 2 - Media examples - bipartite graph
-
-nodes2 <- read.csv("igraph_workshop_data/Dataset2-Media-User-Example-NODES.csv", header=T, as.is=T)
-links2 <- read.csv("igraph_workshop_data/Dataset2-Media-User-Example-EDGES.csv", header=T, row.names=1)
-
-
-# 2. Turing the data into igraph objects
-
-# 2.1 data set 1 - constructing directed graph
-net <- graph_from_data_frame(d=links, vertices=nodes, directed=T) # NB! creates graph from data frame 
-
-# 2.2 inspecting network object generated
-class(net)
-net
-
-# 2.3 accessing elements of the graph
-
-E(net) # The edges of the "net" object
-V(net) # The vertices of the "net" object
-E(net)$type # Edge attribute "type"
-V(net)$media # Vertex attribute "media"
-
-# 2.4 plotting the network
-
-plot(net, edge.arrow.size=.4,vertex.label=NA)
-
-# 2.5 Remove loops in the graph using "simplify"
-
-net <- simplify(net, remove.multiple = F, remove.loops = T)
-plot(net, edge.arrow.size=.4,vertex.label=NA)
-
-as_edgelist(net, names=T) # converts graph to an edge list
-as_adjacency_matrix(net, attr="weight") # Gives you the adjecency matrix of weights of network
-
-# convert graph back to a df
-as_data_frame(net, what="edges")
-as_data_frame(net, what="vertices")
-
-# 2.6 data set 2 - bipartite graph (basically two types of nodes)
-
-# constructing the network
-
-net2 <- graph_from_incidence_matrix(links2)
-table(V(net2)$type) # gives the two types of vertices in the newtork graph
-
-# generating bipartite prjections
-net2.bp <- bipartite.projection(net2)
-
-# visualizing first projection
-plot(net2.bp$proj1, vertex.label.color="black", vertex.label.dist=1,
-vertex.size=7, vertex.label=nodes2$media[!is.na(nodes2$media.type)])
-
-# visualising second projection
-plot(net2.bp$proj2, vertex.label.color="black", vertex.label.dist=1,
-vertex.size=7, vertex.label=nodes2$media[ is.na(nodes2$media.type)])
-
-# 3. different visualization options with igraph:
-
-# 3.1 example 1  - visualizing attributes of nodes and edges of a network
-
-#Generate colors based on media type:
-colrs <- c("gray50", "tomato", "gold")
-V(net)$color <- colrs[V(net)$media.type]
-
-# Set node size based on audience size:
-V(net)$size <- V(net)$audience.size*0.7
-
-# The labels are currently node IDs.
-# Setting them to NA will render no labels:
-V(net)$label.color <- "black"
-V(net)$label <- NA
-
-# Set edge width based on weight:
-E(net)$width <- E(net)$weight/6
-
-#change arrow size and edge color:
-E(net)$arrow.size <- .2
-E(net)$edge.color <- "gray80"
-E(net)$width <- 1+E(net)$weight/12
-
-
-plot(net)
-legend(x=-1.5, y=-1.1, c("Newspaper","Television", "Online News"), pch=21,
-col="#777777", pt.bg=colrs, pt.cex=2, cex=.8, bty="n", ncol=1)
-
-
-# plotting labels of the network
-
-plot(net, vertex.shape="none", vertex.label=V(net)$media,
-vertex.label.font=2, vertex.label.color="gray40",
-vertex.label.cex=.7, edge.color="gray85")
-
-# coloring edges
-
-edge.start <- ends(net, es=E(net), names=F)[,1]
-edge.col <- V(net)$color[edge.start]
-plot(net, edge.color=edge.col, edge.curved=.1)
-
-# 4. NB! Different layout options is described especially pg 43 and 44
-
-# 5. How to improve network plots (isolating/filtering graph on certain features)
-
-# basic stats of the links weights
-hist(links$weight)
-mean(links$weight)
-sd(links$weight)
-
-# 5.1 specify cut-off weight
-cut.off <- mean(links$weight)
-net.sp <- delete_edges(net, E(net)[weight<cut.off])
-plot(net.sp) 
-
-
-# 5.2 interactive plotting with tkplot
-
-tkid <- tkplot(net) #tkid is the id of the tkplot that will open
-l <- tkplot.getcoords(tkid) # grab the coordinates from tkplot
-tk_close(tkid, window.close = T)
-plot(net, layout=l)
-
-# 5.3 Other ways of representing a network
-
-# heat map
-netm <- get.adjacency(net, attr="weight", sparse=F)
-colnames(netm) <- V(net)$media
-rownames(netm) <- V(net)$media
-palf <- colorRampPalette(c("gold", "dark orange"))
-heatmap(netm[,17:1], Rowv = NA, Colv = NA, col = palf(100),
-scale="none", margins=c(10,10) )
-
-
-# 5.4 Plotting bipartite networks - see pg 49 and 48
-
-# NB! 6. Generating local and global Network analytics
-
-# 6.1 density (global)
-
-edge_density(net, loops = F) # for undirected network
-
-# Note: directed networks calculation showed on pg 50
-
-# 6.2 Reciprocity - only for directed graph
-
-# 6.3 Transitivity
-
-# (global - ratio of triangles (direction disregarded) to connected triples.
-transitivity(net, type="global") # net is treated as an undirected network
-transitivity(as.undirected(net, mode="collapse")) # same as above
-
-
-# (local) - ratio of triangles to connected triples each vertex is part of - NB!
-transitivity(net, type="local")
-
-# 6.4 Diameter (global)
-
-diameter(net, directed=F, weights=NA) # global
-diameter(net, directed=F) # global - weights included
-
-
-# 6.5 Node degree NB! (local)
-
-deg <- degree(net, mode = "all", loops = F)
-
-# visualizing the degree
-plot(net, vertex.size=deg*3) # the 3 is only a scaling constant
-
-# histogram of degree
-hist(deg, breaks=1:vcount(net)-1, main="Histogram of node degree")
-
-# density plot of degree
-d <- density(deg, breaks=1:vcount(net)-1)
-plot(d, main="Density distribution of node degree")
-
-# 6.6 Degree distribution
-deg.dist <- degree_distribution(net, cumulative=T, mode="all")
-
-
-plot( x=0:max(deg), y=1-deg.dist, pch=19, cex=1.2, col="orange",
-xlab="Degree", ylab="Cumulative Frequency")
-
-# 6.7 Centrality (local) and centralization (global)
-
-# centrality based on degree
-centr_degree(net, mode="all", normalized=T)
-
-# closeness
-closeness(net, mode="all", weights=NA)
-
-# centrality based on closeness
-centr_clo(net, mode="all", normalized=T)
-
-# eigenvector centrality
-eigen_centrality(net, directed=F, weights=NA)
-# centrality based on eigenvector
-centr_eigen(net, directed=T, normalized=T)
-
-# betweenness scores - vertexes
-betweenness(net, directed=T, weights=NA)
-
-# betweenness scores - edges
-edge_betweenness(net, directed=T, weights=NA)
-
-# centrality based on betweenness
-centr_betw(net, directed=T, normalized=T)
-
-# 6.8 Hubs and Authorities - additional metric to consider to include
-
-hs <- hub_score(net, weights=NA)$vector
-as <- authority_score(net, weights=NA)$vector
-par(mfrow=c(1,2))
-plot(net, vertex.size=hs*50, main="Hubs")
-plot(net, vertex.size=as*30, main="Authorities")
-
-
-# 6.9 Distances and Paths
-
-# average distance - global
-mean_distance(net, directed=F)
-
-# length of all shortest paths - NB! local
-distances(net)
-
-# neighbors of specific node - can calculate out degree neighbors as well as in-degree neighbors
-neighbors(net, V(net)[name == "s01"], mode="all")
-
-# Co-citation - read a bit more about this and see if you can include
-
-cocitation(net)
-
-# 6.10 subgroups and communities
-
-# first simplify network to undirected network
-
-net.sym <- as.undirected(net, mode= "collapse", edge.attr.comb=list(weight="sum", "ignore"))
-
-# 6.10.1 Finding cliques
-
-cliques(net.sym) # list of cliques
-sapply(cliques(net.sym), length) # clique sizes
-largest_cliques(net.sym) # cliques with max number of nodes
-
-vcol <- rep("grey80", vcount(net.sym))
-vcol[unlist(largest_cliques(net.sym))] <- "gold"
-plot(as.undirected(net.sym), vertex.label=V(net.sym)$name, vertex.color=vcol)
-
-# 6.10.1 Community detection
-
-ceb <- cluster_edge_betweenness(net)
-dendPlot(ceb, mode="hclust")
-
-plot(ceb, net)
-
-# examining communities
-
-class(ceb)
-
-length(ceb) # number of communities
-
-membership(ceb) # community membership for each node
-
-modularity(ceb) # how modular the graph partitioning is
-
-crossing(ceb, net) # boolean vector: TRUE for edges across communities
-
-
-# 6.11 K-core decomposition - page 63
-
-# 6.12 Assortativity and Homophily
-
-```
-
-# 2.1 Data pre-processing and checks
+# 3.1 Data pre-processing and checks
 
 ```{r, data pre-processing and checks}
 
@@ -594,1063 +409,21 @@ nrow(unique(transactions_data_up[,c("SENDER_ACCOUNT_ID", "RECEIVER_ACCOUNT_ID")]
 
 ```
 
+# 3.2 Network construction - Undirected weighted network (simplified)
 
-# 2.2 Network construction and feature extraction - Undirected weighted network (Simplified)
+*Note:* The simplified graph will only consider one edge between incident nodes.
 
 ```{r, network construction and feature extraction - undirected weighted network (simplified) }
 
-# Note: The simplified graph will only consider one edge between incident nodes.
+#### Un-directed weighted Network feature generation function ####
 
-# 1.Adjusting transaction df so that it contains the attribute we want to aggregate on (in this case it is the transaction amount)
+# Description: The function will take as input a sub-graph with more than 2 nodes and calculate the relevant network metrics.
 
-transactional_data_simple <- transactions_data_up %>% 
-  select(SENDER_ACCOUNT_ID, RECEIVER_ACCOUNT_ID, TX_AMOUNT)
+# input: a weighted undirected sub-graph with more than two nodes
+# output: a data frame containing all the network metrics extracted from the sub-graph. 
 
+# NB! The function will only  be able to take as input an un-directed-weighted network.
 
-# 2. Constructing un-directed weighted network (simplified) 
-
-# creating network
-AML_net_uw_simple <- graph_from_data_frame(d = transactional_data_simple,
-                                 vertices = accounts_data_up,
-                                 directed = FALSE)
-
-# simplifying created network
-AML_net_uw_simple <- simplify(AML_net_uw_simple, edge.attr.comb = "sum")
-
-
-# 3. Populating feature data frame of network metrics (local features)
-
-# 3.1 Neighborhood metrics
-
-# 3.1.1 Transitivity - (local) ratio of triangles to connected triples each vertex is part of. Can be interpreted as a probability for the network to have adjacent nodes interconnected, thus revealing the existence of tightly connected communities (or clusters, subgroups, cliques).
-
-transitivity_loc_uw_simple <- transitivity(AML_net_uw_simple, 
-                                           type="local",
-                                           weights = E(AML_net_uw_simple)$TX_AMOUNT)
-
-# transitivity_loc_uw_simple[is.na(transitivity_loc_uw_simple)] <- -1 # saving all NA values as -1
-
-
-# NB! Ask ET.
-
-# Note: Nodes which were only incident with one other node will deliver a NaN value for transitivity (simple). Need to think how we can bypass this. 
-
-# adding transitivity to df
-network_feature_df$transitivity_local_uw_simple <- transitivity_loc_uw_simple
-
-# 3.1.2 Total Degree (local) - Here the degree is defined as the number of edges between connected nodes. Because it is a non-simplified graph the there degree value can be more than one for the generated graph
-
-total_degree_loc_uw_simple <- degree(AML_net_uw_simple, 
-                                         loops = F, 
-                                         mode = "all")
-
-# adding total degree to df
-network_feature_df$total_degree_local_uw_simple <- total_degree_loc_uw_simple
-
-# 3.1.3 Weighted degree (strength) - Summing up the edge weights of the adjacent edges for each vertex
-
-degree_strength_loc_uw_simple <- strength(AML_net_uw_simple,
-                                          loops = F,
-                                          mode = "all",
-                                          weights = E(AML_net_uw_simple)$TX_AMOUNT
-                                          )
-
-# adding degree_strength to df
-network_feature_df$degree_strength_local_uw_simple <- degree_strength_loc_uw_simple
-
-
-# 3.2 Centrality metrics
-
-# 3.2.1 Closeness centrality - Measures the average farness (inverse distance) to all other nodes. Nodes with a high closeness score have the shortest distances to all other nodes.
-
-centrality_closeness_loc_uw_simple <- closeness(AML_net_uw_simple,
-                                                normalized = T,
-                                                weights = E(AML_net_uw_simple)$TX_AMOUNT) # takes +/- 10 mins
-
-# Note: We need to standardize to get the average farness. This metric, by default, also uses the weighted features.
-
-# adding closeness centrality to df
-network_feature_df$centrality_closeness_local_uw_simple <- centrality_closeness_loc_uw_simple
-
-# 3.2.2 Eigenvector centrality - Eigenvector centrality scores correspond to the values of the first eigenvector of the graph adjacency matrix; these scores may, in turn, be interpreted as arising from a reciprocal process in which the centrality of each actor is proportional to the sum of the centralities of those actors to whom he or she is connected.
-
-centrality_eigen_loc_uw_simple <- eigen_centrality(AML_net_uw_simple,
-                                         scale = T,
-                                         directed=F,
-                                         weights = E(AML_net_uw_simple)$TX_AMOUNT)
-
-# Note: edge weights are incorporated in calculation
-
-# adding closeness centrality to df
-network_feature_df$centrality_eigen_local_uw_simple <- centrality_eigen_loc_uw_simple$vector
-
-
-# 3.2.3 betweeness - the number of geodesics (shortest paths) going through a vertex or an edge
-
-centrality_betweenness_loc_uw_simple <-  betweenness(AML_net_uw_simple,
-                                                     directed=F,
-                                                     weights = E(AML_net_uw_simple)$TX_AMOUNT) # takes +/- 10 mins
-
-# adding betweenness centrality to df
-network_feature_df$centrality_betweenness_local_uw_simple <- centrality_betweenness_loc_uw_simple 
-
-
-# Note: edge weights are incorporated in calculation
-
-# 3.2.4 Kleinberg's hub and authority centrality scores - defined as the principal eigenvector of t(A)*A, where A is the adjacency matrix of the graph.
-
-centrality_hub_score_loc_uw_simple <- hub_score(AML_net_uw_simple,
-                                                scale = T,
-                                                weights = E(AML_net_uw_simple)$TX_AMOUNT)
-
-# Note: For un-directed networks the hub authority scores are the same. If a directed network is implemented we can calculate both. 
-
-# adding Kleinberg's hub/authority score centrality to df
-network_feature_df$centrality_hub_score_local_uw_simple <- centrality_hub_score_loc_uw_simple$vector
-
-# 3.3 Distances and Paths
-
-# 3.3.1  Average Geodesic - average length of all shortest paths
-
-geodesic_loc_uw_simple <- distances(AML_net_uw_simple,
-                                    mode = "all",
-                                    weights = E(AML_net_uw_simple)$TX_AMOUNT,
-                                    algorithm = "automatic")
-                                    
-
-avg_geodesic_loc_uw_simple <- apply(geodesic_loc_uw_simple, 1, mean)
-
-
-# adding avg_geodesic to df
-network_feature_df$avg_geodesic_local_uw_simple <- avg_geodesic_loc_uw_simple
-
-# 3.4 Triangles - Count how many triangles a vertex is part of, in a graph, or just list the triangles of a graph.
-
-triangles_loc_uw_simple <- count_triangles(AML_net_uw_simple)
-
-# Note: This will be the total triangles Baesens et al. (2015) broke this up into: total fraud triangles, total legit triangles, and total semi-fraud triangles. 
-
-# adding triangles to df
-network_feature_df$triangles_local_uw_simple <- triangles_loc_uw_simple
-
-# 3.5 Inference algorithms 
-
-# 3.5.1 PageRank
-
-pr_uw_simple <- page_rank(AML_net_uw_simple,
-                algo = "prpack",
-                directed = F,
-                damping = 0.85,
-                weights =E(AML_net_uw_simple)$TX_AMOUNT) 
-
-# Note: Look at what damping factors are suitable and how it should be chosen
-
-# adding PageRank to df
-network_feature_df$page_rank_local_pr_uw_simple <- pr_uw_simple$vector
-
-
-# wrinting csv
-#write.csv(as.data.frame(network_feature_df), file = "gustav_preliminary_network_features.csv")
-
-```
-
-
-# 2.3 Network construction and feature extraction - Directed weighted network (non-simplified)
-
-*Note:* Think if you can include the: min, max, mean, median and standard deviation of incoming and outgoing transactions of each node.
-
-
-```{r, network construction and feature extraction - directed weighted network (non-simplified) }
-
-# 2. Constructing undirected weighted network (non-simplified) 
-
-# creating network
-AML_net_dw_non_simple <- graph_from_data_frame(d = transactions_data_weighted,
-                                 vertices = accounts_data_up,
-                                 directed = TRUE)
-
-# 3.1 Neighborhood metrics
-
-# 3.1.1 Transitivity - (local) ratio of triangles to connected triples each vertex is part of. Can be interpreted as a probability for the network to have adjacent nodes interconnected, thus revealing the existence of tightly connected communities (or clusters, subgroups, cliques).
-
-transitivity_loc_dw_non_simple <- transitivity(AML_net_dw_non_simple, type="local")
-
-# adding transitivity to df
-network_feature_df$transitivity_local_dw_non_simple <- transitivity_loc_dw_non_simple
-
-
-# 3.1.2 In/Out Degree (local) - Here the degree is defined as the number of edges between connected nodes. Because it is a non-simplified graph the there degree value can be more than one for the generated graph
-
-# in degree
-total_degree_loc_dw_non_simple_in <- degree(AML_net_dw_non_simple, 
-                                         loops = F, 
-                                         mode = "in")
-# out degree
-total_degree_loc_dw_non_simple_out <- degree(AML_net_dw_non_simple, 
-                                         loops = F, 
-                                         mode = "out")
-
-# adding in degree to df
-network_feature_df$in_degree_local_dw_non_simple_in <- total_degree_loc_dw_non_simple_in
-
-# adding out degree to df
-network_feature_df$out_degree_local_dw_non_simple <- total_degree_loc_dw_non_simple_out
-
-# 3.1.3 Weighted degree (strength) - Summing up the edge weights of the adjacent edges for each vertex
-
-# in
-degree_strength_loc_dw_non_simple_in <- strength(AML_net_dw_non_simple, 
-                                              loops = F,
-                                              mode = "in")
-
-# out
-degree_strength_loc_dw_non_simple_out <- strength(AML_net_dw_non_simple, 
-                                              loops = F,
-                                              mode = "out")
-
-# adding in degree_strength to df
-network_feature_df$in_degree_strength_local_dw_non_simple <- degree_strength_loc_dw_non_simple_in
-
-# adding out degree_strength to df
-network_feature_df$out_degree_strength_local_dw_non_simple <- degree_strength_loc_dw_non_simple_out
-
-
-# 3.2 Centrality metrics
-
-# 3.2.1 Closeness centrality - Measures the average farness (inverse distance) to all other nodes. Nodes with a high closeness score have the shortest distances to all other nodes.
-
-centrality_closeness_loc_dw_non_simple_in <- closeness(AML_net_dw_non_simple, 
-                                                       normalized = T,
-                                                       mode = "in") # takes +/- 10 mins
-
-centrality_closeness_loc_dw_non_simple_out <- closeness(AML_net_dw_non_simple, 
-                                                       normalized = T,
-                                                       mode = "out") # takes +/- 10 mins
-
-# Note: We need to standardize to get the average farness. This metric, by default, also uses the weighted features.
-
-# adding closeness centrality to df - in
-network_feature_df$centrality_closeness_local_dw_non_simple_in <- centrality_closeness_loc_dw_non_simple_in
-
-# adding closeness centrality to df - out
-network_feature_df$centrality_closeness_local_dw_non_simple_out <- centrality_closeness_loc_dw_non_simple_out
-
-# 3.2.2 Eigenvector centrality - Eigenvector centrality scores correspond to the values of the first eigenvector of the graph adjacency matrix; these scores may, in turn, be interpreted as arising from a reciprocal process in which the centrality of each actor is proportional to the sum of the centralities of those actors to whom he or she is connected.
-
-centrality_eigen_loc_dw_non_simple <- eigen_centrality(AML_net_dw_non_simple,
-                                         scale = T,
-                                         directed=F)
-
-# Note: edge weights are incorporated in calculation
-
-# adding closeness centrality to df
-network_feature_df$centrality_eigen_local_dw_non_simple <- centrality_eigen_loc_dw_non_simple$vector
-
-
-# 3.2.3 betweeness - the number of geodesics (shortest paths) going through a vertex or an edge
-
-centrality_betweenness_loc_dw_non_simple <-  betweenness(AML_net_dw_non_simple,
-                                                          directed=T) # takes +/- 10 mins
-
-# adding betweenness centrality to df
-network_feature_df$centrality_betweenness_local_dw_non_simple <- centrality_betweenness_loc_dw_non_simple 
-
-
-# Note: edge weights are incorporated in calculation
-
-# 3.2.4 Kleinberg's hub and authority centrality scores - defined as the principal eigenvector of t(A)*A, where A is the adjacency matrix of the graph.
-
-# hub score
-centrality_hub_score_loc_dw_non_simple <- hub_score(AML_net_dw_non_simple,
-                                                    scale = T)
-
-# authority score
-centrality_authority_score_loc_dw_non_simple <- authority_score(AML_net_dw_non_simple,
-                                                    scale = T)
-
-# Note: For un-directed networks the hub authority scores are the same. If a directed network is implemented we can calculate both. 
-
-# adding Kleinberg's hub score centrality to df
-network_feature_df$centrality_hub_score_local_dw_non_simple <- centrality_hub_score_loc_dw_non_simple$vector
-
-# adding Kleinberg's authority score centrality to df
-network_feature_df$centrality_authority_score_local_dw_non_simple <- centrality_authority_score_loc_dw_non_simple$vector
-
-# 3.3 Distances and Paths
-
-# 3.3.1  Average Geodesic - average length of all shortest paths
-
-# produces 
-
-## out
-geodesic_loc_dw_simple_out <- distances(AML_net_dw_non_simple,
-                                    mode = "out",
-                                    algorithm = "automatic")
-
-# number of "out" geodesic path that exists
-count_geodesic_loc_dw_simple_out <- rowSums(geodesic_loc_dw_simple_out != Inf & geodesic_loc_dw_simple_out != 0)
-
-# adding number of "out" geodesic paths to df
-network_feature_df$count_geodesic_local_dw_simple_out <- count_geodesic_loc_dw_simple_out
-
-## in
-geodesic_loc_dw_simple_in <- distances(AML_net_dw_non_simple,
-                                    mode = "in",
-                                    algorithm = "automatic")
-                                    
-# number of "in" geodesic path that exists
-count_geodesic_loc_dw_simple_in <- rowSums(geodesic_loc_dw_simple_in != Inf & geodesic_loc_dw_simple_in != 0)
-
-# adding number of "in" geodesic paths to df
-network_feature_df$count_geodesic_local_dw_simple_in <- count_geodesic_loc_dw_simple_in
-
-# 3.4 Triangles - Count how many triangles a vertex is part of, in a graph, or just list the triangles of a graph.
-
-triangles_loc_dw_non_simple <- count_triangles(AML_net_dw_non_simple)
-
-# Note: This will be the total triangles Baesens et al. (2015) broke this up into: total fraud triangles, total legit triangles, and total semi-fraud triangles. 
-
-# adding triangles to df
-network_feature_df$triangles_local_dw_non_simple <- triangles_loc_dw_non_simple
-
-# 3.5 Inference algorithms 
-
-# 3.5.1 PageRank
-
-pr_dw_non_simple <- page_rank(AML_net_dw_non_simple,
-                algo = "prpack",
-                directed = T,
-                damping = 0.85) 
-
-# Note: Look at what damping factors are suitable and how it should be chosen
-
-# 3.6 Graph partitioning (clustering and detecting communities) for community detection - algorithm tries to find communities in graphs via directly optimizing a moldularity score.
-
-# adding PageRank to df
-network_feature_df$page_rank_local_pr_dw_non_simple <- pr_dw_non_simple$vector
-
-
-
-
-
-
-```
-
-
-# 2.4 Network construction and feature extraction - Undirected weighted network (Non-simplified)
-
-*Note:* Think about including all network features previously used in this network
-
-```{r, network construction and feature extraction - Undirected weighted network}
-
-# 1. Defining weight value for transactions - aggregating the transaction by summing their amounts between each pair of incident nodes.
-
-# 1.1 Consolidation of sender-receiver and receiver-sender ID's 
-
-# NB! We will assume that the wight between two nodes connected by an edge are the same (for all edges) and that the weight is calculated as the sum of the transaction amount between the two nodes.
-
-# i-graph implementation: generating un-directed network using i-graph, and then converting back to data frame to calculate weights (if this implementation is used the direction of the transaction is discarded)
-
-transactions_data_up_paired <- unique(as_data_frame(graph_from_data_frame(transactions_data_up, directed=FALSE), "edges")) %>%
-  mutate(send_receive_id_combo = paste0(from,"-",to))
-  
-# calculating the number of unique client pairs
-unique_client_pairs <- transactions_data_up_paired[,c("from", "to")] %>%
-  unique()
-  
-# 1.2 Configuring the weights of network - attribute of edges
-
-# Note: The weight is currently determined by the total transaction amount that occurred between the parties
-
-edge_weights <- transactions_data_up_paired %>% 
-  group_by(from, to) %>% 
-  summarise(weight = sum(TX_AMOUNT)) %>% 
-  mutate(send_receive_id_combo = paste0(from,"-",to))
-  
-
-edge_weights <- edge_weights[,-c(1,2)]
-
-# joining to transaction
-transactions_data_weighted <- left_join(transactions_data_up_paired, edge_weights, by = "send_receive_id_combo") %>% 
-  unique()
-
-# 2. Constructing undirected weighted network (non-simplified) 
-
-# creating network
-AML_net_uw_non_simple <- graph_from_data_frame(d = transactions_data_weighted,
-                                 vertices = accounts_data_up,
-                                 directed = FALSE)
-
-
-# Note: UNW stands for un-directed-named-weighted graph
-
-# 2.1 Inspecting graph created object (un-comment if you want to see)
-# nodes of the network
-# V(AML_net_uw_non_simple)
-# 
-# V(AML_net_uw_non_simple)$INIT_BALANCE # how to subset vertices network attributes
-# 
-# # edges of the network
-# E(AML_net_uw_non_simple)
-# 
-# E(AML_net_uw_non_simple)$IS_FRAUD # how to subset edge network attributes
-
-# 3. Populating feature data frame of network metrics (local features)
-
-# 3.1 Neighborhood metrics
-
-# 3.1.1 Transitivity - (local) ratio of triangles to connected triples each vertex is part of. Can be interpreted as a probability for the network to have adjacent nodes interconnected, thus revealing the existence of tightly connected communities (or clusters, subgroups, cliques).
-
-
-transitivity_loc_uw_non_simple <- transitivity(AML_net_uw_non_simple, type="local")
-
-# adding transitivity to df
-network_feature_df$transitivity_local_uw_non_simple <- transitivity_loc_uw_non_simple
-
-
-# 3.1.2 Total Degree (local) - Here the degree is defined as the number of edges between connected nodes. Because it is a non-simplified graph the there degree value can be more than one for the generated graph
-
-total_degree_loc_uw_non_simple <- degree(AML_net_uw_non_simple, 
-                                         loops = F, 
-                                         mode = "all")
-
-# adding total degree to df
-network_feature_df$total_degree_local_uw_non_simple <- total_degree_loc_uw_non_simple
-
-# 3.1.3 Weighted degree (strength) - Summing up the edge weights of the adjacent edges for each vertex
-
-degree_strength_loc_uw_non_simple <- strength(AML_net_uw_non_simple, 
-                                              loops = F,
-                                              mode = "all")
-
-# adding degree_strength to df
-network_feature_df$degree_strength_local_uw_non_simple <- degree_strength_loc_uw_non_simple
-
-
-# 3.2 Centrality metrics
-
-# 3.2.1 Closeness centrality - Measures the average farness (inverse distance) to all other nodes. Nodes with a high closeness score have the shortest distances to all other nodes.
-
-centrality_closeness_loc_uw_non_simple <- closeness(AML_net_uw_non_simple, 
-                                                    normalized = T) # takes +/- 10 mins
-
-# Note: We need to standardize to get the average farness. This metric, by default, also uses the weighted features.
-
-# adding closeness centrality to df
-network_feature_df$centrality_closeness_local_uw_non_simple <- centrality_closeness_loc_uw_non_simple
-
-# 3.2.2 Eigenvector centrality - Eigenvector centrality scores correspond to the values of the first eigenvector of the graph adjacency matrix; these scores may, in turn, be interpreted as arising from a reciprocal process in which the centrality of each actor is proportional to the sum of the centralities of those actors to whom he or she is connected.
-
-centrality_eigen_loc_uw_non_simple <- eigen_centrality(AML_net_uw_non_simple,
-                                         scale = T,
-                                         directed=F)
-
-# Note: edge weights are incorporated in calculation
-
-# adding closeness centrality to df
-network_feature_df$centrality_eigen_local_uw_non_simple <- centrality_eigen_loc_uw_non_simple$vector
-
-
-# 3.2.3 betweeness - the number of geodesics (shortest paths) going through a vertex or an edge
-
-centrality_betweenness_loc_uw_non_simple <-  betweenness(AML_net_uw_non_simple,
-                                                          directed=F) # takes +/- 10 mins
-
-# adding betweenness centrality to df
-network_feature_df$centrality_betweenness_local_uw_non_simple <- centrality_betweenness_loc_uw_non_simple 
-
-
-# Note: edge weights are incorporated in calculation
-
-# 3.2.4 Kleinberg's hub and authority centrality scores - defined as the principal eigenvector of t(A)*A, where A is the adjacency matrix of the graph.
-
-centrality_hub_score_loc_uw_non_simple <- hub_score(AML_net_uw_non_simple,
-                                                    scale = T)
-
-# Note: For un-directed networks the hub authority scores are the same. If a directed network is implemented we can calculate both. 
-
-# adding Kleinberg's hub/authority score centrality to df
-network_feature_df$centrality_hub_score_local_uw_non_simple <- centrality_hub_score_loc_uw_non_simple$vector
-
-# 3.3 Distances and Paths
-
-# 3.3.1  Average Geodesic - average length of all shortest paths
-
-geodesic_loc_uw_non_simple <- distances(AML_net_uw_non_simple,
-                                    mode = "all",
-                                    algorithm = "automatic")
-                                    
-
-avg_geodesic_loc_uw_non_simple <- apply(geodesic_loc_uw_non_simple, 1, mean)
-# adding avg_geodesic to df
-network_feature_df$avg_geodesic_local_uw_non_simple <- avg_geodesic_loc_uw_non_simple
-
-# 3.4 Triangles - Count how many triangles a vertex is part of, in a graph, or just list the triangles of a graph.
-
-triangles_loc_uw_non_simple <- count_triangles(AML_net_uw_non_simple)
-
-# Note: This will be the total triangles Baesens et al. (2015) broke this up into: total fraud triangles, total legit triangles, and total semi-fraud triangles. 
-
-# adding triangles to df
-network_feature_df$triangles_local_uw_non_simple <- triangles_loc_uw_non_simple
-
-# 3.5 Inference algorithms 
-
-# 3.5.1 PageRank
-
-pr_uw_non_simple <- page_rank(AML_net_uw_non_simple,
-                algo = "prpack",
-                directed = F,
-                damping = 0.85) 
-
-# Note: Look at what damping factors are suitable and how it should be chosen
-
-# adding PageRank to df
-network_feature_df$page_rank_local_pr_uw_non_simple <- pr_uw_non_simple$vector
-
-
-# wrinting csv
-#write.csv(as.data.frame(network_feature_df), file = "gustav_preliminary_network_features.csv")
-
-```
-
-
-# 3. Constructing sample network used by Bart Baesens et al. (Fraud Analytics book) - Undirected network & Undirected weighted network
-
-```{r, constructing sample network used by Bart Baesens et al. (Fraud Analytics book) }
-
-# 1. Configuring sample edge and node df's
-
-# nodes (i.e customer's accounts)
-node_df <- data.frame(Client_ID = LETTERS[1:20],
-                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, rep(F,11))) # Added additional 7 nodes to build in some sparsity in network
-
-# edges (i.e customers transactions)
-edge_df <- data.frame(from = c("A","A", "A", "A", "A", "A", "D", "D", "D", "D", "Q", "Q", "Q", "N","N", "N", "I", "I", "K", "K", "O", "B", "F", "F", "M"),
-                      to = c("I", "T", "B", "H", "O", "G", "G", "B", "E", "F", "R", "S", "O", "M", "L", "I", "K", "G", "J", "H", "P", "C", "G", "E", "L"))
-
-
-# 2. Building sample network
-
-sample_network <- graph_from_data_frame(d = edge_df,
-                                 vertices = node_df,
-                                 directed = FALSE)
-
-# visualizing the graph
-
-fraud_colour <- if_else(V(sample_network)$is_fraud == T, "red", "green")
-V(sample_network)$color <- fraud_colour
-plot(sample_network)
-
-
-# 3. Extracting network metrics
-
-#  Creating sample network feature data frame (for downstream feature extraction)
-sample_network_feature_df <- data_frame(node_ID = node_df$node_ID)
-
-# 3.1 Neighborhood metrics
-
-# 3.1.1 Transitivity - (local) ratio of triangles to connected triples each vertex is part of. Can be interpreted as a probability for the network to have adjacent nodes interconnected, thus revealing the existence of tightly connected communities (or clusters, subgroups, cliques).
-
-transitivity_loc_uw_simple <- transitivity(sample_network, 
-                                           type="local",
-                                           vids = V(sample_network),
-                                           isolates = "zero")
-
-# Note: Nodes which were only incident with one other node will deliver a NaN value for transitivity (simple). Need to think how we can bypass this. 
-
-# adding transitivity to df
-sample_network_feature_df$transitivity_local_uw_simple <- transitivity_loc_uw_simple
-
-# 3.1.2 Total Degree (local) - Here the degree is defined as the number of edges between connected nodes. Because it is a non-simplified graph the there degree value can be more than one for the generated graph
-
-total_degree_loc_uw_simple <- degree(sample_network, 
-                                         loops = F, 
-                                         mode = "all")
-
-# adding total degree to df
-sample_network_feature_df$total_degree_local_uw_simple <- total_degree_loc_uw_simple
-
-
-# 3.1.3  Adding fraud degree and Non-fraud degree
-
-# NB! Check the name and is_fraud column in the filtering operation when bigger network is used.
-
-
-# Fraud degree calculations
-fraud_degree_counter_func <- function(graph){
-  
-  # names of all the nodes in the network
-  node_names <-V(graph)$name 
-  
-  # creating variable to store fraud degree counts for each node
-  fraud_degree_vec <- rep(NA, length(node_names))
-  
-  # looping to calculate for each fraud degree
-  for (i in 1:length(node_names)) {
-    
-    # extracting temp sub-graph for a single node
-    temp_sub_graph <- induced_subgraph(graph, 
-                                       vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
-                                       impl = "auto")
-    
-    # converting sub-graph to data_frame and filtering
-    temp_fraud_degree <- as_data_frame(temp_sub_graph, what = "vertices") %>% 
-      filter(name != node_names[i] & is_fraud == T) %>% 
-      nrow()
-    
-    # saving fraud degree
-    fraud_degree_vec[i] <- temp_fraud_degree
-    
-  }
-  
-  return(fraud_degree_vec)
-  
-}
-
-sample_is_fraud_degree <- fraud_degree_counter_func(graph = sample_network)
-
-# adding fraud degree to df
-sample_network_feature_df$fraud_degree_local_uw_simple <- sample_is_fraud_degree
-
-
-# Non-fraud degree calculations
-non_fraud_degree_counter_func <- function(graph){
-  
-  # names of all the nodes in the network
-  node_names <-V(graph)$name 
-  
-  # creating variable to store fraud degree counts for each node
-  non_fraud_degree_vec <- rep(NA, length(node_names))
-  
-  # looping to calculate for each fraud degree
-  for (i in 1:length(node_names)) {
-    
-    # extracting temp sub-graph for a single node
-    temp_sub_graph <- induced_subgraph(graph, 
-                                       vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
-                                       impl = "auto")
-    
-    # converting sub-graph to data_frame and filtering
-    temp_non_fraud_degree <- as_data_frame(temp_sub_graph, what = "vertices") %>% 
-      filter(name != node_names[i] & is_fraud == F) %>% 
-      nrow()
-    
-    # saving fraud degree
-    non_fraud_degree_vec[i] <- temp_non_fraud_degree
-    
-  }
-  
-  return(non_fraud_degree_vec)
-  
-}
-
-sample_non_fraud_degree <- non_fraud_degree_counter_func(graph = sample_network)
-
-# adding fraud degree to df
-sample_network_feature_df$non_fraud_degree_local_uw_simple <- sample_non_fraud_degree
-
-
-# 3.1.3 Weighted degree (strength) - Summing up the edge weights of the adjacent edges for each vertex
-
-degree_strength_loc_uw_simple <- strength(sample_network,
-                                          loops = F,
-                                          mode = "all",
-                                          weights = NULL # NB! will change when  weights are incorporated
-                                          )
-
-# adding degree_strength to df
-sample_network_feature_df$degree_strength_local_uw_simple <- degree_strength_loc_uw_simple
-
-# Note: This simply returns the degree because no weights were specified
-
-### NEW ###
-
-# 3.1.4  Node density: considering an each node and its neighborhood of 1, then the node density is defined as the ratio of the number of edges and the number of possible edges (which you will find in a connected graph). 
-
-
-node_density_func <- function(graph) {
-  
-  # names of all the nodes in the network
-  node_names <-V(graph)$name 
-  
-  # creating variable to store fraud degree counts for each node
-  node_density_vec <- rep(NA, length(node_names))
-  
-  # looping to calculate for each fraud degree
-  for (i in 1:length(node_names)) {
-    
-    # extracting temp sub-graph for a single node
-    temp_sub_graph <- induced_subgraph(graph, 
-                                       vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
-                                       impl = "auto")
-    # calculating density and saving value
-    node_density_vec[i] <- edge_density(temp_sub_graph)
-    
-  }
-  
-  return(node_density_vec)
-  
-}
-
-
-sample_node_density <- node_density_func(graph = sample_network)
-
-# adding fraud degree to df
-sample_network_feature_df$node_density_local_uw_simple <- sample_node_density
-
-
-# 3.1.5 Relational neighbor: Assigns a probability to node i is part of class fraud or non-fraud given the class labels of node i's neighborhood. 
-
-
-relational_neighbour_classifier_func <- function(graph) {
-  
-  # names of all the nodes in the network
-  node_names <-V(graph)$name 
-  
-  # creating variable to store the probability of node being fraudulent or non-fraudulent according to its neighborhood
-  prob_fraud_vec <- rep(NA, length(node_names))
-  prob_non_fraud_vec <- rep(NA, length(node_names))
-  
-  # looping to calculate for each fraud degree
-  
-  for (i in 1:length(node_names)) {
-    
-    # extracting temp sub-graph for a single node
-    temp_sub_graph <- induced_subgraph(graph, 
-                                       vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
-                                       impl = "auto")
-    
-    # converting sub-graph to data_frame and filtering
-    temp_df <- as_data_frame(temp_sub_graph, what = "vertices")
-    
-    # calculating number of # fraud neighbors
-    temp_count_fraud <- temp_df %>% 
-      filter(name != node_names[i] & is_fraud == T) %>% 
-      nrow()
-    
-    # calculating number of # non-fraud neighbors
-    temp_count_non_fraud <- temp_df %>% 
-      filter(name != node_names[i] & is_fraud == F) %>% 
-      nrow()
-    
-    # calculating nrmalisation factor (Z)
-    Z =  temp_count_fraud + temp_count_non_fraud
-    
-    prob_fraud_vec[i] <- temp_count_fraud/Z
-    
-    prob_non_fraud_vec[i] <- temp_count_non_fraud/Z
-    
-    }
-  
-  probability_res <- list(prob_fraud = prob_fraud_vec,
-                          prob_non_fraud = prob_non_fraud_vec) 
-  
-  
-  return(probability_res)
-  
-}
-
-
-# results of the relational neighborhood classifier
-relational_neig_results <- relational_neighbour_classifier_func(graph = sample_network)
-
-# probability of non-fraud
-relational_neig_prob_non_fraud <- relational_neig_results$prob_non_fraud
-
-# probability of fraud
-relational_neig_prob_fraud <- relational_neig_results$prob_fraud
-
-# adding relational neighbor classifier results to df
-sample_network_feature_df$relational_neighbour_non_fraud_prob <- relational_neig_prob_non_fraud
-sample_network_feature_df$relational_neighbour_fraud_prob <- relational_neig_prob_fraud
-
-
-# 3.1.6 Probabilistic relational neighbor classifier
-
-# Note: Can try to add a weight to the classifier (optional)
-
-prob_relational_neighbor_classifier_func <- function(graph, 
-                                                     relational_neig_prob_fraud, 
-                                                     relational_neig_prob_non_fraud){
-  
-  # adding relational neighborhood classifier results to graph
-  V(graph)$relational_neig_prob_fraud <- relational_neig_prob_fraud
-  V(graph)$relational_neig_prob_non_fraud <- relational_neig_prob_non_fraud
-  
-  # names of all the nodes in the network
-  node_names <-V(graph)$name 
-  
-  # creating variable to store the probability of node being fraudulent or non-fraudulent according to its neighborhood
-  prob_fraud_vec <- rep(NA, length(node_names))
-  prob_non_fraud_vec <- rep(NA, length(node_names))
-  
-  # looping to calculate for each fraud degree
-  for (i in 1:length(node_names)) {
-    
-    # extracting temp sub-graph for a single node
-    temp_sub_graph <- induced_subgraph(graph, 
-                                       vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
-                                       impl = "auto")
-    
-    # converting sub-graph to data_frame and filtering
-    temp_df <- as_data_frame(temp_sub_graph, what = "vertices")
-    
-    # calculating number of # fraud neighbors
-    temp_count_fraud <- temp_df %>% 
-      filter(name != node_names[i]) %>% 
-      select(relational_neig_prob_fraud) %>% 
-      sum()
-    
-    # calculating number of # non-fraud neighbors
-    temp_count_non_fraud <- temp_df %>% 
-      filter(name != node_names[i]) %>% 
-      select(relational_neig_prob_non_fraud) %>% 
-      sum()
-    
-    # calculating normalization factor (Z)
-    Z =  temp_count_fraud + temp_count_non_fraud
-    
-    prob_fraud_vec[i] <- temp_count_fraud/Z
-    
-    prob_non_fraud_vec[i] <- temp_count_non_fraud/Z
-    
-  }
-    
-
-  
-  probability_res <- list(prob_fraud = prob_fraud_vec,
-                          prob_non_fraud = prob_non_fraud_vec) 
-  
-}
-
-# results of the prob relational neighborhood classifier
-prob_relational_neig_results <- prob_relational_neighbor_classifier_func(graph = sample_network,
-                                                                         relational_neig_prob_fraud = sample_network_feature_df$relational_neighbour_fraud_prob,
-                                                                         relational_neig_prob_non_fraud = sample_network_feature_df$relational_neighbour_non_fraud_prob)
-
-
-# probability of non-fraud
-prob_relational_neig_prob_non_fraud <- prob_relational_neig_results$prob_non_fraud
-
-# probability of fraud
-prob_relational_neig_prob_fraud <- prob_relational_neig_results$prob_fraud
-
-# adding relational neighbor classifier results to df
-sample_network_feature_df$prob_relational_neighbour_non_fraud_prob <- prob_relational_neig_prob_non_fraud
-sample_network_feature_df$prob_relational_neighbour_fraud_prob <- prob_relational_neig_prob_fraud
-
-
-### NEW ###
-
-# 3.2 Centrality metrics
-
-# 3.2.1 Closeness centrality - Measures the average farness (inverse distance) to all other nodes. Nodes with a high closeness score have the shortest distances to all other nodes.
-
-centrality_closeness_loc_uw_simple <- closeness(sample_network,
-                                                normalized = T, # can think of using TRUE on full network
-                                                weights = NULL) # Can use weights in full network  
-
-# Note: We need to standardize to get the average farness. This metric, by default, also uses the weighted features.
-
-# adding closeness centrality to df
-sample_network_feature_df$centrality_closeness_local_uw_simple <- centrality_closeness_loc_uw_simple
-
-# 3.2.2 Eigenvector centrality - Eigenvector centrality scores correspond to the values of the first eigenvector of the graph adjacency matrix; these scores may, in turn, be interpreted as arising from a reciprocal process in which the centrality of each actor is proportional to the sum of the centralities of those actors to whom he or she is connected.
-
-centrality_eigen_loc_uw_simple <- eigen_centrality(sample_network,
-                                         scale = T,
-                                         directed=F,
-                                         weights = NULL) #weights can be included 
-
-# Note: edge weights are incorporated in calculation
-
-# adding closeness centrality to df
-sample_network_feature_df$centrality_eigen_local_uw_simple <- centrality_eigen_loc_uw_simple$vector
-
-
-# 3.2.3 betweeness - the number of geodesics (shortest paths) going through a vertex or an edge
-
-centrality_betweenness_loc_uw_simple <-  betweenness(sample_network,
-                                                     directed=F,
-                                                     weights = NULL) #weights can be included
-
-# adding betweenness centrality to df
-sample_network_feature_df$centrality_betweenness_local_uw_simple <- centrality_betweenness_loc_uw_simple 
-
-
-# Note: edge weights are incorporated in calculation
-
-# 3.2.4 Kleinberg's hub and authority centrality scores - defined as the principal eigenvector of t(A)*A, where A is the adjacency matrix of the graph.
-
-centrality_hub_score_loc_uw_simple <- hub_score(sample_network,
-                                                scale = T,
-                                                weights = NULL) #weights can be included
-
-# Note: For un-directed networks the hub authority scores are the same. If a directed network is implemented we can calculate both. 
-
-# adding Kleinberg's hub/authority score centrality to df
-sample_network_feature_df$centrality_hub_score_local_uw_simple <- centrality_hub_score_loc_uw_simple$vector
-
-# 3.3 Distances and Paths
-
-# 3.3.1  Average Geodesic - average length of all shortest paths
-
-geodesic_loc_uw_simple <- distances(sample_network,
-                                    mode = "all",
-                                    weights = NULL, # weights can be added 
-                                    algorithm = "automatic")
-                                    
-
-# excluding nodes that are unconnected
-
-avg_geodesic_loc_uw_simple <- apply(geodesic_loc_uw_simple, 1, mean)
-
-
-# adding avg_geodesic to df
-sample_network_feature_df$avg_geodesic_local_uw_simple <- avg_geodesic_loc_uw_simple
-
-# 3.4 Triangles - Count how many triangles a vertex is part of, in a graph, or just list the triangles of a graph.
-
-# 3.4.1 Total triangles
-
-triangles_loc_uw_simple <- count_triangles(sample_network)
-
-# Note: This will be the total triangles Baesens et al. (2015) broke this up into: total fraud triangles, total legit triangles, and total semi-fraud triangles. 
-
-# adding triangles to df
-sample_network_feature_df$triangles_local_uw_simple <- triangles_loc_uw_simple
-
-# 3.4.2 Calculating, Fraud, Semi-Fraud, and Legit triangles
-
-# The function below classifies all the triangles found in a network as either being legit, fraud or semi-fraud
-triangle_classifier_func <- function(graph){
-  
-  # calculates the complete sub-graphs with 3 vertices (i.e triangles)
-  cl.tri = cliques(graph,
-                   min=3,
-                   max=3)
-  
-  # constructing a data frame where each row corresponds to a triangle and each column to a node in that triangle
-  df <- lapply(cl.tri, function(x){V(sample_network)$name[x]})
-  triangles_df = data.frame(matrix(unlist(df),ncol=3,byrow=T))
-  
-  # creating class label for triangles (will be important later)
-  triangles_df$triangle_label <- rep(NA,nrow(triangles_df))
-  
-  # creating a sub graph for each triangle
-  for (i in 1:nrow(triangles_df)) {
-    
-    # counting fraud triangles
-    temp_triangle <- c(triangles_df$X1[i], triangles_df$X2[i], triangles_df$X3[i])
-    
-    # creating sub_graph
-    temp_sub_graph <- induced_subgraph(sample_network, 
-                                       vids = temp_triangle, # triangle nodes
-                                       impl = "auto")
-    
-    fraud_sum <- as_data_frame(temp_sub_graph, what = "vertices") %>% 
-      select(is_fraud) %>% 
-      sum()
-    
-    
-    if(fraud_sum == 0){
-      
-      triangles_df$triangle_label[i] <- "legit_triangles"
-      
-    }else if(fraud_sum == 1 | fraud_sum == 2){
-      
-      triangles_df$triangle_label[i] <- "semi_fraud_triangles"
-    }else{
-      
-      triangles_df$triangle_label[i] <- "fraud_triangles"
-      
-      } 
-  }
-  
-  # changing df in long format
-  triangles_df_long <- pivot_longer(triangles_df,
-                                        cols = 1:3,
-                                        names_to = "col_names",
-                                        values_to = "node_ID"
-                                        ) %>% 
-  select(-col_names)
-  
-  # tabulating triangles result
-  traingles_df_table_long <-  as.data.frame(t(table(triangles_df_long)))
-  
-  # converting to wide format
-  triangles_df <- pivot_wider(traingles_df_table_long,
-                              names_from = triangle_label,
-                              values_from = Freq)
-  
-  
-  
-  return(triangles_df)
-  
-}
-
-
-sample_triangle_df <- triangle_classifier_func(sample_network)
-
-# joining to sample network feature data
-
-sample_network_feature_df <- left_join(sample_network_feature_df,sample_triangle_df, by = "node_ID" )
-
-sample_network_feature_df[c("legit_triangles", "semi_fraud_triangles", "fraud_triangles")][is.na(sample_network_feature_df[c("legit_triangles", "semi_fraud_triangles", "fraud_triangles")])] <- 0
-
-
-sample_network_feature_df[,c("legit_triangles",  "semi_fraud_triangles", "fraud_triangles" )]
-
-# 3.5 Inference algorithms 
-
-# 3.5.1 PageRank
-
-pr_uw_simple <- page_rank(sample_network,
-                algo = "prpack",
-                directed = F,
-                damping = 0.85,
-                weights =NULL) # can add weights 
-
-# Note: Look at what damping factors are suitable and how it should be chosen
-
-# adding PageRank to df
-sample_network_feature_df$page_rank_local_pr_uw_simple <- pr_uw_simple$vector
-
-
-#### Deconstruction of network ####
-
-
-# NB! Going to construct the statistics for each of the 
-
-sample_network_components <- decompose.graph(graph = sample_network,
-                                             mode = "weak",
-                                             min.vertices = 3)
-
-
-#### NB!! NEXT STEPS
-
-
-# 1. Look at how PageRank can be implimented
-# 2. Build MONSTER metric generation function
-# 2.1 Include transaction metrics (min, max, average, std of outgoing and ingoing transactions)
-
-
-
-```
-
-
-Network feature generation function
-
-*Description:* The function will take as input a sub-graph with more than 2 nodes and calculate the relevant network metrics.
-
-*input:* a sub-graph with more than two nodes
-
-*output:* a data frame containing all the network metrics extracted from the sub-graph. 
-
-NB! The function will be able to take as input i) un-directed-weighted networks (most features) ii) directed network (limited features) 
-
-```{r, network feature generation function}
 
 # 1. Defining additional functions that will be used within the network feature generation function
 
@@ -1797,9 +570,7 @@ relational_neighbour_classifier_func <- function(graph) {
 
 # 1.4 Probabilistic relational neighbor (classifier)
 
-prob_relational_neighbor_classifier_func <- function(graph, 
-                                                     relational_neig_prob_fraud, 
-                                                     relational_neig_prob_non_fraud){
+prob_relational_neighbor_classifier_func <- function(graph, relational_neig_prob_fraud, relational_neig_prob_non_fraud){
   
   # adding relational neighborhood classifier results to graph
   V(graph)$relational_neig_prob_fraud <- relational_neig_prob_fraud
@@ -1920,7 +691,6 @@ triangle_classifier_func <- function(graph){
   
 }
 
-
 # 2. Defining weighted network feature generation function 
 
 weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)){
@@ -1943,7 +713,7 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
                                       type = "local",
                                       vids = V(sample_network),
                                       isolates = "zero",
-                                      weights = NULL) 
+                                      weights = E(sample_network)$weight) 
 
   # 1.1.2 Total Degree (local) - Here the degree is defined as the number of edges between connected nodes.
   
@@ -1976,7 +746,7 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
   degree_strength_loc_uw <- strength(sample_network,
                                      loops = F,
                                      mode = "all",
-                                     weights = NULL # NB! will change when  weights are incorporated
+                                     weights = E(sample_network)$weight # NB! will change when  weights are incorporated
   )
   
   # NB!! Try to implement degree strength for fraud and non-fraud nodes (when implementing weighted network)
@@ -2041,9 +811,6 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
   # replacing NA values
   sample_triangle_df_full[is.na(sample_triangle_df_full)] <- 0
   
-  
-  # Note: df will be joined to network feature df at the end of function.
-  
 
   # 1.2 Centrality metrics
   
@@ -2055,7 +822,7 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
   
   centrality_closeness_loc_uw <- closeness(sample_network,
                                            normalized = T, # can think of using TRUE on full network
-                                           weights = NULL) # Can use weights in full network  
+                                           weights = E(sample_network)$weight) # Can use weights in full network  
   
   
   farness_loc_uw <- (centrality_closeness_loc_uw)^-1
@@ -2068,7 +835,7 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
   centrality_eigen_loc_uw_res <- eigen_centrality(sample_network,
                                               scale = T,
                                               directed = F,
-                                              weights = NULL) #weights can be included 
+                                              weights = E(sample_network)$weight) #weights can be included 
   
   centrality_eigen_loc_uw <- centrality_eigen_loc_uw_res$vector
   
@@ -2079,7 +846,7 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
   
   centrality_betweenness_loc_uw <-  betweenness(sample_network,
                                                 directed = F,
-                                                weights = NULL,
+                                                weights = E(sample_network)$weight,
                                                 normalized = F) #weights can be included
   
   # 1.2.4  Average Geodesic - average length of all shortest paths (hops to nodes)
@@ -2088,7 +855,7 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
   
   geodesic_loc_uw <- distances(sample_network,
                                       mode = "all",
-                                      weights = NULL, # weights can be added 
+                                      weights = E(sample_network)$weight, # weights can be added 
                                       algorithm = "automatic")
   
   
@@ -2107,7 +874,7 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
                             algo = "prpack",
                             directed = F,
                             damping = 0.85,
-                            weights =NULL) # can add weights 
+                            weights = E(sample_network)$weight) # can add weights 
   
   pr_base_loc_uw <- pr_base_loc_uw_res$vector
   
@@ -2125,7 +892,7 @@ weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)
                             directed = F,
                             damping = 0.85,
                             personalized = start_vec_fraud,
-                            weights =NULL) # can add weights 
+                            weights = E(sample_network)$weight) # can add weights 
   
   pr_fraud_loc_uw <- pr_fraud_loc_uw_res$vector
   
@@ -2165,15 +932,302 @@ return(sample_network_feature_df)
 weighted_network_feature_df <-  weighted_network_feature_function(sub_graph = sample_network, verbose = T)
 
 
+```
+
+# 3.3 Network construction - Directed network (non-simplified)
+
+```{r, network construction - directed network (non-simplified)}
+
+#### Directed Network feature generation function ####
+
+# Description: The function will take as input a sub-graph with more than 2 nodes and calculate the relevant network metrics.
+
+# input: a directed sub-graph with more than two nodes
+# output: a data frame containing all the network metrics extracted from the sub-graph. 
+
+# NB! The function will only  be able to take as input an un-directed-weighted network.
+
+# 1. Defining additional functions that will be used within the network feature generation function
+
+# 1.1 Degree functions
+
+# 1.1.1 Fraud degree calculations
+directed_degree_counter_func <- function(graph, fraud_selection = c(TRUE, FALSE), degree_direction = c("in", "out")){
+  
+  # names of all the nodes in the network
+  node_names <- V(graph)$name 
+  
+  # creating variable to store fraud degree counts for each node
+  fraud_degree_vec <- rep(NA, length(node_names))
+  
+  if(degree_direction == "in"){
+    
+    # looping to calculate for each fraud degree
+    for (i in 1:length(node_names)) {
+      
+      # extracting temp sub-graph for a single node
+      temp_sub_graph <- induced_subgraph(graph, 
+                                         vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
+                                         impl = "auto")
+      
+      # converting sub-graph to data_frame and filtering
+      temp_df <- as_data_frame(temp_sub_graph, what = "both")
+      
+      temp_edge_df <- temp_df$edges %>%
+        rename(name = from)
+      
+      temp_fraud_count <- left_join(temp_edge_df,temp_df$vertices, by = "name") %>% 
+        filter(name != node_names[i] & to == node_names[i] & is_fraud == fraud_selection) %>% 
+        nrow() 
+      
+      # saving fraud degree
+      fraud_degree_vec[i] <- temp_fraud_count
+    }
+  }
+  
+  if(degree_direction == "out"){
+    
+    # looping to calculate for each fraud degree
+    for (i in 1:length(node_names)) {
+      
+      # extracting temp sub-graph for a single node
+      temp_sub_graph <- induced_subgraph(graph, 
+                                         vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
+                                         impl = "auto")
+      
+      # converting sub-graph to data_frame and filtering
+      temp_df <- as_data_frame(temp_sub_graph, what = "both")
+      
+      temp_edge_df <- temp_df$edges %>%
+        rename(name = to)
+      
+      temp_fraud_count <- left_join(temp_edge_df,temp_df$vertices, by = "name") %>% 
+        filter(name != node_names[i] & from == node_names[i] & is_fraud == fraud_selection) %>% 
+        nrow() 
+      
+      # saving fraud degree
+      fraud_degree_vec[i] <- temp_fraud_count
+    }
+  }
+  
+  return(fraud_degree_vec)
+  
+}
+
+# 2. 
+
+directed_network_feature_function <- function(sub_graph, verbose = c(TRUE, FALSE)){
+  
+  # 1. Extracting network metrics
+  
+  if(verbose == T){print("1. Calculating neighbourhood metrics (directed)...")}
+  
+  # 1.1 Neighborhood metrics
+  
+  if(verbose == T){print("1.1 Calculating in-degree...")}
+  # 1.1.1 in-degree
+  in_degree_loc_d <- degree(sub_graph, 
+                            mode = "in",
+                            loops = F,
+                            normalized = F)
+  
+  if(verbose == T){print("1.2 Calculating out-degree...")}
+  
+  # 1.1.2 out-degree
+  out_degree_loc_d <- degree(sub_graph, 
+                            mode = "out",
+                            loops = F,
+                            normalized = F)
+  
+  # 1.1.3 in-degree (fraudulent/non-fraudulent clients)
+  
+  if(verbose == T){print("1.3 Calculating fraud in-degree...")}
+  # number of transactions made by fraudulent node to the specific reference node
+  in_degree_fraud_loc_d <- directed_degree_counter_func(sub_graph, fraud_selection = T, degree_direction = "in")
+  
+  if(verbose == T){print("1.4 Calculating non-fraud in-degree...")}
+  # number of transactions made by non-fraudulent node to the specific reference node
+  in_degree_non_fraud_loc_d <- directed_degree_counter_func(sub_graph, fraud_selection = F, degree_direction = "in")
+  
+  # 1.1.4 out-degree (fraudulent/non-fraudulent clients)
+  
+  if(verbose == T){print("1.5 Calculating fraud out-degree...")}
+  # number of transactions made by fraudulent node to the specific reference node
+  out_degree_fraud_loc_d <- directed_degree_counter_func(sub_graph, fraud_selection = T, degree_direction = "out")
+  
+  if(verbose == T){print("1.6 Calculating non-fraud out-degree...")}
+  # number of transactions made by non-fraudulent node to the specific reference node
+  out_degree_non_fraud_loc_d <- directed_degree_counter_func(sub_graph, fraud_selection = F, degree_direction = "out")
+  
+  
+  # 1.2 Compiling results in data frame
+  
+  if(verbose){print("Compiling calculated metrics in data frame...")}
+  
+  sample_network_feature_df <- data_frame(client_ID = V(sub_graph)$name,
+                                          in_degree = in_degree_loc_d,
+                                          in_degree_fraud = in_degree_fraud_loc_d,
+                                          in_degree_non_fraud = in_degree_non_fraud_loc_d,
+                                          out_degree = out_degree_loc_d,
+                                          out_degree_fraud = out_degree_fraud_loc_d,
+                                          out_degree_non_fraud = out_degree_non_fraud_loc_d
+                                          )
+  
+return(sample_network_feature_df) 
+  
+  
+  
+  }
+
+directed_network_feature_df <-  directed_network_feature_function(sub_graph = sample_network, verbose = T)
+
 
 ```
+
+
+# 3.4 Feature extraction - Transactional data
+
+```{r, Feature extraction - Transactional data }
+
+# We will try and extract the following transaction information for each client:
+
+# 1. Incoming transactions
+
+# 1.1 Total
+# 1.2 Average
+# 1.4 variance
+
+# Can drill each of down into fraud and non-fraud
+
+# 2. Outgoing transactions
+
+# 2.1 Total
+# 2.2 Average
+# 2.3 Median
+# 2.4 variance
+
+transaction_df <- edge_df
+
+# Can drill each of down into fraud and non-fraud
+
+# 1. Generating incoming transaction stats
+
+incoming_transaction_stats <- transaction_df %>% 
+  group_by(to) %>% 
+  summarise(incoming_total = sum(weight),
+            incoming_avg = mean(weight),
+            incoming_sd = sd(weight),
+            incoming_median = median(weight),
+            incoming_max = max(weight),
+            incoming_min = min(weight))
+
+
+outgoing_transaction_stats <- transaction_df %>% 
+  group_by(from) %>% 
+  summarise(outgoing_total = sum(weight),
+            outgoing_avg = mean(weight),
+            outgoing_sd = sd(weight),
+            outgoing_median = median(weight),
+            outgoing_max = max(weight),
+            outgoing_min = min(weight))
+
+# Can try to add number of rounded transactions as well
+
+
+```
+
+
+# 3.5 Import of random customer information
+
+```{r, import of random customer information}
+
+
+
+
+
+```
+
+# 3.6 Combination of data frames
+
+# 4. Post-local-EDA
+
+# 5. Global EDA (network features evolving over time)
+
 
 
 
 ### DEMO CODE ###
 
-Visualisations
-```{r}
+Tests code
+
+```{r, test code}
+
+graph <- sample_network
+
+# names of all the nodes in the network
+  node_names <- V(graph)$name 
+  
+  # creating variable to store fraud degree counts for each node
+  fraud_degree_vec <- rep(NA, length(node_names))
+  
+  if(degree_direction == "in"){
+    
+    # looping to calculate for each fraud degree
+    for (i in 1:length(node_names)) {
+      
+      # extracting temp sub-graph for a single node
+      temp_sub_graph <- induced_subgraph(graph, 
+                                         vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
+                                         impl = "auto")
+      
+      # converting sub-graph to data_frame and filtering
+      temp_df <- as_data_frame(temp_sub_graph, what = "both")
+      
+      temp_edge_df <- temp_df$edges %>%
+        rename(name = from)
+      
+      temp_fraud_count <- left_join(temp_edge_df,temp_df$vertices, by = "name") %>% 
+        filter(name != node_names[i] & to == node_names[i] & is_fraud == fraud_selection) %>% 
+        nrow() 
+      
+      # saving fraud degree
+      fraud_degree_vec[i] <- temp_fraud_count
+    }
+  }
+  
+  if(degree_direction == "out"){
+    
+    # looping to calculate for each fraud degree
+    for (i in 1:length(node_names)) {
+      
+      # extracting temp sub-graph for a single node
+      temp_sub_graph <- induced_subgraph(graph, 
+                                         vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
+                                         impl = "auto")
+      
+      # converting sub-graph to data_frame and filtering
+      temp_df <- as_data_frame(temp_sub_graph, what = "both")
+      
+      temp_edge_df <- temp_df$edges %>%
+        rename(name = to)
+      
+      temp_fraud_count <- left_join(temp_edge_df,temp_df$vertices, by = "name") %>% 
+        filter(name != node_names[i] & from == node_names[i] & is_fraud == fraud_selection) %>% 
+        nrow() 
+      
+      # saving fraud degree
+      fraud_degree_vec[i] <- temp_fraud_count
+    }
+  }
+
+
+
+
+```
+
+
+Visualisations ideas
+```{r, visulaisation ideas}
 
 # visualizing weights
 
@@ -2216,49 +1270,7 @@ plot(density_weight_degree, main="Density distribution of weighted node degree")
 ```
 
 
-Tests
-```{r}
-#### testing degree value ####
-
-# selecting node
-
-selected_node <- transactional_data_simple %>% 
-  filter(SENDER_ACCOUNT_ID == "992" | RECEIVER_ACCOUNT_ID == "992")
-
-all_accounts_temp <- data.frame(ids = c(selected_node$SENDER_ACCOUNT_ID, selected_node$RECEIVER_ACCOUNT_ID)) %>% 
-  unique()
 
 
-node_1_subgraph <- subgraph(graph = AML_net, v = all_accounts_temp$ids)
-
-plot(node_1_subgraph)
-
-#### testing degree value ####
-
-
-
-```
-
-EDA - global network features (evolving over time)
-
-```{r}
-
-```
-
-Unused network metrics
-
-```{r}
-
-# 3.1.4 Co-citation coupling (local) - simply counts how many types two vertices are cocited (there is another vertex citing both of them).
-
-cocitation_loc_uw_non_simple <- cocitation(AML_net_uw_non_simple) #nxn matrix
-
-
-cocitation_loc_uw_non_simple_sums <- colSums(cocitation_loc_uw_non_simple)
-
-# adding total co-citation per node to df
-network_feature_df$cocitation_local_uw_non_simple_sum <- cocitation_loc_uw_non_simple_sums
-
-```
 
 
