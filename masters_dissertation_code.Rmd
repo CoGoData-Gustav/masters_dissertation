@@ -17,13 +17,14 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(stringr)
 library(lubridate)
-library(plyr)
 
 # 2. Network Analytics
 library(igraph)
 library(Matrix)
 
+# ML packages
 
+library(caret)
 
 
 ```
@@ -45,7 +46,7 @@ alerts_data_raw <- read.csv("alerts.csv")
 transactions_data_raw <- read.csv("transactions/transactions.csv")
 
 
-### Un-directed weighted network Test and validation purposes ###
+###  Test and validation data set ###
 
 # Constructing sample network used by Bart Baesens et al. (Fraud Analytics book) - Undirected network & Undirected weighted network
 
@@ -59,100 +60,39 @@ node_df <- data.frame(client_ID = LETTERS[1:20],
 # edges (i.e customers transactions)
 edge_df <- data.frame(from = c("A","A", "A", "A", "A", "A", "D", "D", "D", "D", "Q", "Q", "Q", "N","N", "N", "I", "I", "K", "K", "O", "B", "F", "F", "M"),
                       to = c("I", "T", "B", "H", "O", "G", "G", "B", "E", "F", "R", "S", "O", "M", "L", "I", "K", "G", "J", "H", "P", "C", "G", "E", "L"),
-                      weight = rexp(25,0.001))
+                      weight = c(rexp(10,0.001), rep(1000,10), rexp(5,0.001)))
 
 
 # 2. Building sample network
 
-sample_network <- graph_from_data_frame(d = edge_df,
+# 2.1 un- directed network
+sample_network_undirected <- graph_from_data_frame(d = edge_df[,-3], # removing weight col
                                  vertices = node_df,
                                  directed = FALSE)
 
-# visualizing the graph
 
-fraud_colour <- if_else(V(sample_network)$is_fraud == T, "red", "green")
-V(sample_network)$color <- fraud_colour
-E(sample_network)$width <- 1+E(sample_network)$weight/250
-plot(sample_network)
+# 2.2 un-directed weighted network
+sample_network_undirected_weighted <- graph_from_data_frame(d = edge_df,
+                                 vertices = node_df,
+                                 directed = FALSE)
 
-### Un-directed weighted network Test and validation purposes ###
-
-### directed network Test and validation purposes ###
-
- # Test 1
-
-# 1. Configuring sample edge and node df's
-
-# nodes (i.e customer's accounts)
-node_df <- data.frame(client_ID = LETTERS[1:20],
-                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, rep(F,11)))
-
-# edges (i.e customers transactions)
-edge_df <- data.frame(from = c("A","A", "A", "A", "A", "A", "D", "D", "D", "D", "Q", "Q", "Q", "N","N", "N", "I", "I", "K", "K", "O", "B", "F", "F", "M"),
-                      to = c("I", "T", "B", "H", "O", "G", "G", "B", "E", "F", "R", "S", "O", "M", "L", "I", "K", "G", "J", "H", "P", "C", "G", "E", "L"),
-                      weight = rexp(25,0.001))
-
-
-# 2. Building sample network
-
-sample_network <- graph_from_data_frame(d = edge_df,
+# 2.3 directed network
+sample_network_directed_weighted <- graph_from_data_frame(d = edge_df, # removing weight col
                                  vertices = node_df,
                                  directed = TRUE)
 
-# visualizing the graph
 
-fraud_colour <- if_else(V(sample_network)$is_fraud == T, "red", "green")
-V(sample_network)$color <- fraud_colour
-E(sample_network)$arrow.size <- 0.45
+# visualizing the graph (only directed graph)
 
-plot(sample_network)
+fraud_colour <- if_else(V(sample_network_directed_weighted)$is_fraud == T, "red", "green")
+V(sample_network_directed_weighted)$color <- fraud_colour
+E(sample_network_directed_weighted)$width <- E(sample_network_directed_weighted)$weight/200
+plot(sample_network_directed_weighted)
 
+# interactive plot
 
- # Test 2
-# 1. Configuring sample edge and node df's
-
-# nodes (i.e customer's accounts)
-node_df <- data.frame(client_ID = LETTERS[1:10],
-                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, F)) 
-
-# edges (i.e customers transactions)
-edge_df <- data.frame(from = c("A", "A", "A", "A", "B", "B", "B", "C", "C", "D", "G", "G", "H", "H", "H", "J"),
-                      to = c("B", "B", "F", "G", "A", "E", "I", "B", "B", "C", "H", "H", "G", "J", "I", "H"),
-                      weight = c(10, 20, 5, 10, 10, 25, 5, 15, 15, 10, 20, 20, 5, 10, 15, 20) )
-
-
-# 2. Building sample network
-
-sample_network_directed <- graph_from_data_frame(d = edge_df,
-                                 vertices = node_df,
-                                 directed = T)
-
-# visualizing the graph
-
-fraud_colour <- if_else(V(sample_network_directed)$is_fraud == T, "red", "green")
-V(sample_network_directed)$color <- fraud_colour
-E(sample_network_directed)$arrow.size <- 0.5
-#E(sample_network)$width <- 1+E(sample_network)$weight/250
-plot(sample_network_directed)
-
-
-### directed network Test and validation purposes ###
-
-### transaction extraction purposes ###
-# 1. Configuring sample edge and node df's
-
-# nodes (i.e customer's accounts)
-node_df <- data.frame(client_ID = LETTERS[1:20],
-                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, rep(F,11)))
-
-# edges (i.e customers transactions)
-edge_df <- data.frame(from = c("A","A", "B", "H", "O", "G", "D", "D", "E", "F", "Q", "S", "O", "M","N", "I", "I", "G", "K", "H", "O", "B", "F", "E", "M"),
-                      to = c("I", "T", "A", "A", "A", "A", "G", "B", "D", "D", "R", "Q", "Q", "N", "L", "N", "K", "I", "J", "K", "P", "C", "G", "F", "L"),
-                      weight = rexp(25,0.001))
-
-
-### transaction extraction purposes ###
-
+tkid <- tkplot(sample_network_directed_weighted) #tkid is the id of the tkplot that will open
+l <- tkplot.getcoords(sample_network_directed_weighted)
 
 
 ```
@@ -343,7 +283,7 @@ transactions_data_honest <- transactions_data_raw %>%
 
 # 3. Feature Extraction
 
-# 3.1 Data pre-processing and checks
+# 3.1 Data pre-processing, data split and checks
 
 ```{r, data pre-processing and checks}
 
@@ -365,47 +305,97 @@ transactions_data_up[is.na(transactions_data_up)] <- "No Alert"
 # rearranging columns such that sender node and receiver node is mentioned first in the df
 transactions_data_up <- transactions_data_up[,c(2,3,1,4:ncol(transactions_data_up))]
 
+# 1.2 Selecting/renaming only needed cols for networks that will be generated
 
-# 1.2 Setting up an initial network to check which nodes have a degree = 0
+# nodes
 
-# setting up initial network 
-initial_net <- graph_from_data_frame(d = transactions_data_up,
-                                 vertices = accounts_data_raw,
-                                 directed = FALSE)
+accounts_data_final <- accounts_data_raw %>% 
+  select(ACCOUNT_ID, INIT_BALANCE, IS_FRAUD) %>% 
+  rename(client_ID = ACCOUNT_ID,
+         is_fraud = IS_FRAUD,
+         init_balance = INIT_BALANCE) %>% 
+  mutate(is_fraud = if_else(is_fraud == "true", T, F))
 
-# calculating total degree
-initial_node_degree <- degree(initial_net, mode = "all", loops = F)
+# edges
+transactions_data_final <- transactions_data_raw %>% 
+  select(SENDER_ACCOUNT_ID, RECEIVER_ACCOUNT_ID, TX_AMOUNT) %>% 
+  rename(from = SENDER_ACCOUNT_ID,
+         to = RECEIVER_ACCOUNT_ID,
+         weight = TX_AMOUNT)
 
-# extracting the account ID's which had a degree of zero
-accounts_degree_zero <-  names(which(initial_node_degree == 0))
-
-# updated accounts data
-accounts_data_up <- accounts_data_raw %>% 
-  filter(!ACCOUNT_ID %in%  accounts_degree_zero)
-
-
-# 1.3 Creating network feature data frame (for downstream feature extraction)
-network_feature_df <- data_frame(ACCOUNT_ID = accounts_data_up$ACCOUNT_ID)
 
 # 2. Data checks 
 
-# 2.1 nodes - accounts
+# 2.1 Checking when account is deemed as fraud
 
-nrow(accounts_data_raw)
+## sender accounts
 
-accounts_data_raw$ACCOUNT_ID %>%
-  unique() %>% 
-  length()
+# sender_transactions_fraud <- transactions_data_up %>% 
+#   filter(IS_FRAUD == "True") %>% 
+#   select(SENDER_ACCOUNT_ID) %>% 
+#   unique()
+# 
+# receiver_transactions_fraud <- transactions_data_up %>% 
+#   filter(IS_FRAUD == "False") %>% 
+#   select(RECEIVER_ACCOUNT_ID) %>% 
+#   unique()
+# 
+# clients <- accounts_data_raw %>%
+#   select(IS_FRAUD, ACCOUNT_ID) %>% 
+#   mutate(sender_account = ACCOUNT_ID %in% sender_transactions_fraud$SENDER_ACCOUNT_ID) %>% 
+#   mutate(receiver_account = ACCOUNT_ID %in% receiver_transactions_fraud$RECEIVER_ACCOUNT_ID) %>% 
+#   mutate(logic_tester = if_else(((sender_account = T) | (receiver_account = T)) & IS_FRAUD != "true", "Not Valid", "Valid"))
+# 
+# 
+# not_valid_clients <- clients %>% 
+#   filter(logic_tester == "Not Valid")
+
+# Conclusion: NB! An account is deemed fraudulent if it is a recipient or sender of a flagged fraudulent transaction. 
+
+# 2.2 Checking if there are any repititions in node and edge df's
+
+# nodes - accounts
+# nrow(accounts_data_raw)
+# 
+# accounts_data_raw$ACCOUNT_ID %>%
+#   unique() %>% 
+#   length()
   
 # Note: there are 1000 different accounts
 
 # 2.2 links - transactions
 
-nrow(transactions_data_up)
-
-nrow(unique(transactions_data_up[,c("SENDER_ACCOUNT_ID", "RECEIVER_ACCOUNT_ID")]))
+# nrow(transactions_data_up)
+# 
+# nrow(unique(transactions_data_up[,c("SENDER_ACCOUNT_ID", "RECEIVER_ACCOUNT_ID")]))
 
 # Note: There are more links than sender-receiver combination, therefore we have cases where there is multiple links between the same nodes. This will be adresed in the next code section.
+
+# 3. Data split
+
+# split should be:
+
+
+
+# 3.1 Stratified splitting of data - 
+
+set.seed(123)
+train_index <- createDataPartition(accounts_data_final$is_fraud, p = 0.8, list = F)
+
+
+# accounts data
+
+accounts_data_final_train <- accounts_data_final[train_index,]
+accounts_data_final_test <- accounts_data_final[-train_index,]
+
+# transaction data 
+
+# configuring training data set 
+transactions_data_final_train <- transactions_data_final %>% 
+  filter(to %in% accounts_data_final_train$client_ID & from %in% accounts_data_final_train$client_ID)
+
+transactions_data_final_test <- transactions_data_final 
+  
 
 ```
 
@@ -693,7 +683,8 @@ triangle_classifier_func <- function(graph){
 
 # 2. Defining weighted network feature generation function 
 
-weighted_network_feature_function <- function(sub_graph, verbose = c(TRUE,FALSE)){
+
+undirected_weighted_network_feature_func <- function(sub_graph, verbose = c(TRUE,FALSE)){
   
   sample_network <- sub_graph
   
@@ -929,7 +920,7 @@ return(sample_network_feature_df)
 
 }
 
-weighted_network_feature_df <-  weighted_network_feature_function(sub_graph = sample_network, verbose = T)
+# undirected_weighted_network_feature_df <-  undirected_weighted_network_feature_func(sub_graph = sample_network_undirected_weighted, verbose = T)
 
 
 ```
@@ -1014,7 +1005,7 @@ directed_degree_counter_func <- function(graph, fraud_selection = c(TRUE, FALSE)
   
 }
 
-# 2. 
+# 2. Defining directed network feature generation function 
 
 directed_network_feature_function <- function(sub_graph, verbose = c(TRUE, FALSE)){
   
@@ -1079,7 +1070,7 @@ return(sample_network_feature_df)
   
   }
 
-directed_network_feature_df <-  directed_network_feature_function(sub_graph = sample_network, verbose = T)
+#directed_network_feature_df <-  directed_network_feature_function(sub_graph = sample_network_directed_weighted, verbose = T)
 
 
 ```
@@ -1089,71 +1080,207 @@ directed_network_feature_df <-  directed_network_feature_function(sub_graph = sa
 
 ```{r, Feature extraction - Transactional data }
 
-# We will try and extract the following transaction information for each client:
+#### Transaction feature generation function ####
 
-# 1. Incoming transactions
+# Description: The function will take as input the accounts_df and the transactions df and output the metrics  
 
-# 1.1 Total
-# 1.2 Average
-# 1.4 variance
+# input: accounts_df and the transactions df
+# output: a data frame containing transaction metrics 
 
-# Can drill each of down into fraud and non-fraud
+transaction_feature_function <- function(transaction_df, accounts_df){ 
+  
+  # Can drill each of down into fraud and non-fraud
+  
+  # 1. Generating incoming transaction stats
+  
+  # basic incoming stats
+  incoming_transaction_stats <- transaction_df %>% 
+    mutate(is_round = if_else(plyr::round_any(weight, 10) == weight, T, F)) %>% 
+    group_by(to) %>% 
+    summarise(incoming_total = sum(weight),
+              incoming_avg = mean(weight),
+              incoming_sd = sd(weight),
+              incoming_median = median(weight),
+              incoming_max = max(weight),
+              incoming_min = min(weight),
+              incoming_round_numbers_count = sum(is_round))
+  
+  # fraud/non-fraud incoming transaction totals - receiving from fraudsters/non-fraudsters
+  incoming_transactions_fraud_non_fraud <- transaction_df %>% 
+    rename(client_ID = from) %>% 
+    left_join(accounts_df, by = "client_ID")%>% 
+    group_by(to, is_fraud) %>% 
+    summarise(total = sum(weight)) %>% 
+    pivot_wider(names_from = is_fraud,
+                values_from = total) %>% 
+    rename(fraud_total_income = `TRUE`,
+           non_fraud_total_income = `FALSE`)
+  
+  # removing NA's
+  incoming_transactions_fraud_non_fraud[is.na(incoming_transactions_fraud_non_fraud)] <- 0
+  
+  # joining and creating final df 
+  incoming_transaction_stats_final <- left_join(incoming_transaction_stats,incoming_transactions_fraud_non_fraud, by = "to" ) %>% 
+    rename(client_ID = to)
+  
+  
+  # 2. Generating outgoing transaction stats
+  
+  # basic outgoing stats
+  outgoing_transaction_stats <- transaction_df %>% 
+    mutate(is_round = if_else(plyr::round_any(weight, 10) == weight, T, F)) %>%
+    group_by(from) %>% 
+    summarise(outgoing_total = sum(weight),
+              outgoing_avg = mean(weight),
+              outgoing_sd = sd(weight),
+              outgoing_median = median(weight),
+              outgoing_max = max(weight),
+              outgoing_min = min(weight),
+              outgoing_round_numbers_count = sum(is_round))
+  
+  # fraud/non-fraud incoming transaction totals - paying fraudsters/non-fraudsters
+  outgoing_transactions_fraud_non_fraud <- transaction_df %>% 
+    rename(client_ID = to) %>% 
+    left_join(accounts_df, by = "client_ID")%>% 
+    group_by(from, is_fraud) %>% 
+    summarise(total = sum(weight)) %>% 
+    pivot_wider(names_from = is_fraud,
+                values_from = total) %>% 
+    rename(total_fraud_payments = `TRUE`,
+           total_non_fraud_payments = `FALSE`)
+  
+  # removing NA's
+  outgoing_transactions_fraud_non_fraud[is.na(outgoing_transactions_fraud_non_fraud)] <- 0
+  
+  # joining and creating final df 
+  outgoing_transaction_stats_final <- left_join(outgoing_transaction_stats,outgoing_transactions_fraud_non_fraud, by = "from" ) %>% 
+    rename(client_ID = from)
+  
+  # 3. Creating transaction feature df
+  
+  transaction_feature_df <- data.frame(client_ID = accounts_df$client_ID,
+                                       init_balance = accounts_df$init_balance)
+  
+  transaction_feature_df <- left_join(transaction_feature_df, incoming_transaction_stats_final, by = "client_ID") %>% 
+    left_join(outgoing_transaction_stats_final, by = "client_ID")
+  
+  # replacing NA values
+  
+  cols_to_replace <- c("incoming_total", "incoming_avg", "incoming_max", "incoming_min", "incoming_round_numbers_count", "non_fraud_total_income", "fraud_total_income" , "outgoing_total", "outgoing_avg", "outgoing_max", "outgoing_min", "outgoing_round_numbers_count", "total_non_fraud_payments", "total_fraud_payments")
+  
+  transaction_feature_df[cols_to_replace][is.na(transaction_feature_df[cols_to_replace])] <- 0
+  
+  # Note: SD and Medians have NA values
+  
+  return(transaction_feature_df)
+  
+}
 
-# 2. Outgoing transactions
 
-# 2.1 Total
-# 2.2 Average
-# 2.3 Median
-# 2.4 variance
-
-transaction_df <- edge_df
-
-# Can drill each of down into fraud and non-fraud
-
-# 1. Generating incoming transaction stats
-
-incoming_transaction_stats <- transaction_df %>% 
-  group_by(to) %>% 
-  summarise(incoming_total = sum(weight),
-            incoming_avg = mean(weight),
-            incoming_sd = sd(weight),
-            incoming_median = median(weight),
-            incoming_max = max(weight),
-            incoming_min = min(weight))
-
-
-outgoing_transaction_stats <- transaction_df %>% 
-  group_by(from) %>% 
-  summarise(outgoing_total = sum(weight),
-            outgoing_avg = mean(weight),
-            outgoing_sd = sd(weight),
-            outgoing_median = median(weight),
-            outgoing_max = max(weight),
-            outgoing_min = min(weight))
-
-# Can try to add number of rounded transactions as well
+#transaction_df <- transaction_feature_function(transaction_df = edge_df,accounts_df = node_df  ) 
 
 
 ```
 
 
-# 3.5 Import of random customer information
+# 3.5  Constructing final feature data table
 
-```{r, import of random customer information}
+The below code chunk will:
+- Extract the transaction features from data
+- Construct the needed type of networks (weighted-undirected network & Directed network)
+- For each grapgh component (V > 2) extract the weighted-undirected features & directed features
 
+```{r, constructing final feature data table}
+
+#### TRAINING DATA ####
+
+# 1. Extracting transaction features
+
+transaction_feature_df_train <- transaction_feature_function(transaction_df = transactions_data_final_train, accounts_df = accounts_data_final_train)
+
+transaction_feature_df_train$client_ID <- as.character(transaction_feature_df_train$client_ID)
+
+# 2. Constructing needed networks
+
+# 2.1 Un-directed-weighted network
+
+# constructing raw network
+undirected_weighted_graph_raw_train <- graph_from_data_frame(d = transactions_data_final_train,
+                                                       directed = F,
+                                                       vertices = accounts_data_final_train) 
+  
+# Simplifying the graph (removing multiple edges)
+undirected_weighted_graph_simp_train <- simplify(undirected_weighted_graph_raw_train,
+                                           remove.multiple = T,
+                                           remove.loops = T,
+                                           edge.attr.comb = c(weight = "sum"))
+
+# 2.2 Directed graph
+
+weight_ind <- which(names(transactions_data_final_train) == 'weight')
+
+directed_graph_train <- graph_from_data_frame(d = transactions_data_final_train[,-weight_ind],
+                                       directed = T,
+                                       vertices = accounts_data_final_train)
+
+
+# 3. Extract the network features for each component in the graph
+
+# 3.1 Un-directed weighted graph
+
+# decomposing graph into its graph components
+undirected_weighted_graph_components_train <- decompose.graph(graph = undirected_weighted_graph_simp_train,
+                                                 min.vertices = 3) 
+
+# Note: Only one component was identified
+
+# Extracting graph components
+current_undirected_weighted_component_train <- undirected_weighted_graph_components_train[[1]]
+
+# Note: The number of vertices changed
+
+# extracting features
+
+undirected_weighted_graph_features_train <- undirected_weighted_network_feature_func(sub_graph = current_undirected_weighted_component_train,
+                                                                                verbose = T)
+
+# 3.2 Directed graph
+
+# decomposing graph into its graph components
+directed_graph_components_train <- decompose.graph(graph = directed_graph_train,
+                                                 min.vertices = 3) 
+# Note: The number of vertices changed
+
+# extracting graph components
+current_directed_component_train <- directed_graph_components_train[[1]]
+
+
+# extracting features
+
+directed_graph_features_train <- directed_network_feature_function(sub_graph = current_directed_component_train,
+                                                             verbose = T)
+
+
+# 4. Combing generated data tables into one feature df
+
+fraud_df_train <- data.frame(client_ID = as.character(accounts_data_final_train$client_ID),
+                          is_fraud = accounts_data_final_train$is_fraud)
+
+final_feature_df_train <- left_join(undirected_weighted_graph_features_train, directed_graph_features_train, by = "client_ID") %>% 
+  left_join(transaction_feature_df_train, by = "client_ID") %>% 
+  left_join(fraud_df_train, by = "client_ID")
+
+
+#### TESTING DATA ####
 
 
 
 
 ```
-
-# 3.6 Combination of data frames
 
 # 4. Post-local-EDA
 
 # 5. Global EDA (network features evolving over time)
-
-
 
 
 ### DEMO CODE ###
@@ -1162,64 +1289,93 @@ Tests code
 
 ```{r, test code}
 
-graph <- sample_network
+time_stamp <- transactions_data_raw %>% 
+  group_by(TIMESTAMP) %>% 
+  summarise(count = n())
 
-# names of all the nodes in the network
-  node_names <- V(graph)$name 
-  
-  # creating variable to store fraud degree counts for each node
-  fraud_degree_vec <- rep(NA, length(node_names))
-  
-  if(degree_direction == "in"){
-    
-    # looping to calculate for each fraud degree
-    for (i in 1:length(node_names)) {
-      
-      # extracting temp sub-graph for a single node
-      temp_sub_graph <- induced_subgraph(graph, 
-                                         vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
-                                         impl = "auto")
-      
-      # converting sub-graph to data_frame and filtering
-      temp_df <- as_data_frame(temp_sub_graph, what = "both")
-      
-      temp_edge_df <- temp_df$edges %>%
-        rename(name = from)
-      
-      temp_fraud_count <- left_join(temp_edge_df,temp_df$vertices, by = "name") %>% 
-        filter(name != node_names[i] & to == node_names[i] & is_fraud == fraud_selection) %>% 
-        nrow() 
-      
-      # saving fraud degree
-      fraud_degree_vec[i] <- temp_fraud_count
-    }
-  }
-  
-  if(degree_direction == "out"){
-    
-    # looping to calculate for each fraud degree
-    for (i in 1:length(node_names)) {
-      
-      # extracting temp sub-graph for a single node
-      temp_sub_graph <- induced_subgraph(graph, 
-                                         vids = unlist(neighborhood(graph = graph, order = 1, nodes = node_names[i])),
-                                         impl = "auto")
-      
-      # converting sub-graph to data_frame and filtering
-      temp_df <- as_data_frame(temp_sub_graph, what = "both")
-      
-      temp_edge_df <- temp_df$edges %>%
-        rename(name = to)
-      
-      temp_fraud_count <- left_join(temp_edge_df,temp_df$vertices, by = "name") %>% 
-        filter(name != node_names[i] & from == node_names[i] & is_fraud == fraud_selection) %>% 
-        nrow() 
-      
-      # saving fraud degree
-      fraud_degree_vec[i] <- temp_fraud_count
-    }
-  }
+time_stamp %>% 
+ggplot(aes(x = TIMESTAMP, y = count)) + 
+  geom_col()
 
+hist(time_stamp$count)
+
+plot(density(time_stamp$count))
+
+sum(time_stamp$count)*0.75
+
+
+# splitting the data (out-of-time validation)
+
+transactions_test <- transactions_data_raw %>% 
+  mutate(row_index  = 1:nrow(transactions_data_raw)) %>% 
+  mutate(set = if_else(row_index < 0.5480962*nrow(transactions_data_raw), "train", "test"))
+
+
+# visualing some data
+
+transactions_test %>%
+  group_by(IS_FRAUD, set) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = set, y = count, fill = IS_FRAUD )) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_text(aes(label=count), vjust=1.6, position = position_dodge(0.9), size=3.5) +
+  scale_y_log10()
+
+
+# optimiser
+
+split_point_df <- data.frame(split = seq(from = 0.5, to = 0.8, length.out = 500))
+
+transactions_test <- transactions_data_raw %>% 
+  mutate(row_index  = 1:nrow(transactions_data_raw))
+
+test_fraud_ratio <- rep(NA, nrow(split_point_df))
+
+train_fraud_ratio <- rep(NA, nrow(split_point_df))
+
+resulting_ratio <- rep(NA, nrow(split_point_df))
+
+for (i in 1:nrow(split_point_df)) {
+  
+  
+  current_split <- transactions_test %>% 
+    mutate(set = if_else(row_index < split_point_df[i,1]*nrow(transactions_data_raw), "train", "test")) %>% 
+    group_by(set, IS_FRAUD) %>% 
+    summarise(current_count = n())
+  
+  # test
+  test_fraud_total <- current_split$current_count[current_split$set == "test" &  current_split$IS_FRAUD == "True"]
+  test_non_fraud_total <- current_split$current_count[current_split$set == "test" &  current_split$IS_FRAUD == "False"]
+  
+  test_fraud_ratio[i] <-  test_fraud_total/(test_fraud_total + test_non_fraud_total)
+  
+  train_fraud_total <- current_split$current_count[current_split$set == "train" &  current_split$IS_FRAUD == "True"]
+  train_non_fraud_total <- current_split$current_count[current_split$set == "train" &  current_split$IS_FRAUD == "False"]
+  
+  train_fraud_ratio[i] <-  train_fraud_total/(train_fraud_total + train_non_fraud_total)
+  
+  resulting_ratio[i] <- test_fraud_ratio[i] - train_fraud_ratio[i]
+  
+  
+}
+
+split_point_df$test_fraud_ratio <- test_fraud_ratio
+
+split_point_df$train_fraud_ratio <- train_fraud_ratio
+
+split_point_df$resulting_ratio <- resulting_ratio
+
+
+split_point_df %>% 
+  ggplot(aes(x = split, y = resulting_ratio)) +
+  geom_point()
+
+
+split_point_df_filt <- split_point_df %>% 
+  filter(resulting_ratio >= 0 )
+
+
+which(split_point_df_filt$resulting_ratio == min(split_point_df_filt$resulting_ratio))
 
 
 
