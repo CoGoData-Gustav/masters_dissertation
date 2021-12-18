@@ -22,10 +22,10 @@ library(lubridate)
 library(igraph)
 library(Matrix)
 
-# ML packages
-
+# 3. ML packages
 library(caret)
-
+library(glmnet)
+library(ROCR)
 
 ```
 
@@ -46,7 +46,21 @@ alerts_data_raw <- read.csv("alerts.csv")
 transactions_data_raw <- read.csv("transactions/transactions.csv")
 
 
-###  Test and validation data set ###
+
+
+### SIMULATED DATA ###
+
+accounts_sim <- read.csv("sample/accounts.csv") 
+transactions_sim <- read.csv("sample/transactions.csv") 
+alert_transactions_sim <- read.csv("sample/alert_transactions.csv")
+alert_acc_sim <- read.csv("sample/alert_accounts.csv")
+cash_tx_sim <- read.csv("sample/cash_tx.csv")
+ind_bulk_sim <- read.csv("sample/individuals-bulkload.csv")
+org_bulk_sim <- read.csv("sample/organizations-bulkload.csv")
+resolved_ent_sim <- read.csv("sample/resolvedentities.csv")
+sar_acc_sim <- read.csv("sample/sar_accounts.csv")
+
+###  SAMPLE NETORK DATA SET ###
 
 # Constructing sample network used by Bart Baesens et al. (Fraud Analytics book) - Undirected network & Undirected weighted network
 
@@ -54,45 +68,45 @@ transactions_data_raw <- read.csv("transactions/transactions.csv")
 # 1. Configuring sample edge and node df's
 
 # nodes (i.e customer's accounts)
-node_df <- data.frame(client_ID = LETTERS[1:20],
-                      is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, rep(F,11)))
+# node_df <- data.frame(client_ID = LETTERS[1:20],
+#                       is_fraud = c(rep(F, 3), T, T, T, rep(F,2), T, rep(F,11)))
 
 # edges (i.e customers transactions)
-edge_df <- data.frame(from = c("A","A", "A", "A", "A", "A", "D", "D", "D", "D", "Q", "Q", "Q", "N","N", "N", "I", "I", "K", "K", "O", "B", "F", "F", "M"),
-                      to = c("I", "T", "B", "H", "O", "G", "G", "B", "E", "F", "R", "S", "O", "M", "L", "I", "K", "G", "J", "H", "P", "C", "G", "E", "L"),
-                      weight = c(rexp(10,0.001), rep(1000,10), rexp(5,0.001)))
+# edge_df <- data.frame(from = c("A","A", "A", "A", "A", "A", "D", "D", "D", "D", "Q", "Q", "Q", "N","N", "N", "I", "I", "K", "K", "O", "B", "F", "F", "M"),
+#                       to = c("I", "T", "B", "H", "O", "G", "G", "B", "E", "F", "R", "S", "O", "M", "L", "I", "K", "G", "J", "H", "P", "C", "G", "E", "L"),
+#                       weight = c(rexp(10,0.001), rep(1000,10), rexp(5,0.001)))
 
 
 # 2. Building sample network
 
 # 2.1 un- directed network
-sample_network_undirected <- graph_from_data_frame(d = edge_df[,-3], # removing weight col
-                                 vertices = node_df,
-                                 directed = FALSE)
+# sample_network_undirected <- graph_from_data_frame(d = edge_df[,-3], # removing weight col
+#                                  vertices = node_df,
+#                                  directed = FALSE)
 
 
 # 2.2 un-directed weighted network
-sample_network_undirected_weighted <- graph_from_data_frame(d = edge_df,
-                                 vertices = node_df,
-                                 directed = FALSE)
+# sample_network_undirected_weighted <- graph_from_data_frame(d = edge_df,
+#                                  vertices = node_df,
+#                                  directed = FALSE)
 
 # 2.3 directed network
-sample_network_directed_weighted <- graph_from_data_frame(d = edge_df, # removing weight col
-                                 vertices = node_df,
-                                 directed = TRUE)
+# sample_network_directed_weighted <- graph_from_data_frame(d = edge_df, # removing weight col
+#                                  vertices = node_df,
+#                                  directed = TRUE)
 
 
 # visualizing the graph (only directed graph)
 
-fraud_colour <- if_else(V(sample_network_directed_weighted)$is_fraud == T, "red", "green")
-V(sample_network_directed_weighted)$color <- fraud_colour
-E(sample_network_directed_weighted)$width <- E(sample_network_directed_weighted)$weight/200
-plot(sample_network_directed_weighted)
+# fraud_colour <- if_else(V(sample_network_directed_weighted)$is_fraud == T, "red", "green")
+# V(sample_network_directed_weighted)$color <- fraud_colour
+# E(sample_network_directed_weighted)$width <- E(sample_network_directed_weighted)$weight/200
+# plot(sample_network_directed_weighted)
 
 # interactive plot
 
-tkid <- tkplot(sample_network_directed_weighted) #tkid is the id of the tkplot that will open
-l <- tkplot.getcoords(sample_network_directed_weighted)
+# tkid <- tkplot(sample_network_directed_weighted) #tkid is the id of the tkplot that will open
+# l <- tkplot.getcoords(sample_network_directed_weighted)
 
 
 ```
@@ -318,7 +332,7 @@ accounts_data_final <- accounts_data_raw %>%
 
 # edges
 transactions_data_final <- transactions_data_raw %>% 
-  select(SENDER_ACCOUNT_ID, RECEIVER_ACCOUNT_ID, TX_AMOUNT) %>% 
+  select(SENDER_ACCOUNT_ID, RECEIVER_ACCOUNT_ID, TX_AMOUNT, TIMESTAMP, IS_FRAUD) %>% 
   rename(from = SENDER_ACCOUNT_ID,
          to = RECEIVER_ACCOUNT_ID,
          weight = TX_AMOUNT)
@@ -352,7 +366,7 @@ transactions_data_final <- transactions_data_raw %>%
 
 # Conclusion: NB! An account is deemed fraudulent if it is a recipient or sender of a flagged fraudulent transaction. 
 
-# 2.2 Checking if there are any repititions in node and edge df's
+# 2.2 Checking if there are any repetitions in node and edge df's
 
 # nodes - accounts
 # nrow(accounts_data_raw)
@@ -371,35 +385,10 @@ transactions_data_final <- transactions_data_raw %>%
 
 # Note: There are more links than sender-receiver combination, therefore we have cases where there is multiple links between the same nodes. This will be adresed in the next code section.
 
-# 3. Data split
-
-# split should be:
-
-
-
-# 3.1 Stratified splitting of data - 
-
-set.seed(123)
-train_index <- createDataPartition(accounts_data_final$is_fraud, p = 0.8, list = F)
-
-
-# accounts data
-
-accounts_data_final_train <- accounts_data_final[train_index,]
-accounts_data_final_test <- accounts_data_final[-train_index,]
-
-# transaction data 
-
-# configuring training data set 
-transactions_data_final_train <- transactions_data_final %>% 
-  filter(to %in% accounts_data_final_train$client_ID & from %in% accounts_data_final_train$client_ID)
-
-transactions_data_final_test <- transactions_data_final 
-  
 
 ```
 
-# 3.2 Network construction - Undirected weighted network (simplified)
+# 3.2 Network construction - Undirected weighted network (simplified) function(s)
 
 *Note:* The simplified graph will only consider one edge between incident nodes.
 
@@ -925,7 +914,7 @@ return(sample_network_feature_df)
 
 ```
 
-# 3.3 Network construction - Directed network (non-simplified)
+# 3.3 Network construction - Directed network (non-simplified) function(s)
 
 ```{r, network construction - directed network (non-simplified)}
 
@@ -1076,7 +1065,7 @@ return(sample_network_feature_df)
 ```
 
 
-# 3.4 Feature extraction - Transactional data
+# 3.4 Feature extraction - Transactional data function(s)
 
 ```{r, Feature extraction - Transactional data }
 
@@ -1192,7 +1181,11 @@ The below code chunk will:
 
 ```{r, constructing final feature data table}
 
-#### TRAINING DATA ####
+#### TRAINING DATA - first data set generated ####
+
+transactions_data_final_train <- transactions_data_final
+accounts_data_final_train <- accounts_data_final
+
 
 # 1. Extracting transaction features
 
@@ -1226,6 +1219,8 @@ directed_graph_train <- graph_from_data_frame(d = transactions_data_final_train[
 
 # 3. Extract the network features for each component in the graph
 
+# NB: This should be a check since the simulator should produce only a single component
+
 # 3.1 Un-directed weighted graph
 
 # decomposing graph into its graph components
@@ -1244,6 +1239,8 @@ current_undirected_weighted_component_train <- undirected_weighted_graph_compone
 undirected_weighted_graph_features_train <- undirected_weighted_network_feature_func(sub_graph = current_undirected_weighted_component_train,
                                                                                 verbose = T)
 
+# Note: Takes about 4.5 mins
+
 # 3.2 Directed graph
 
 # decomposing graph into its graph components
@@ -1257,8 +1254,11 @@ current_directed_component_train <- directed_graph_components_train[[1]]
 
 # extracting features
 
+
 directed_graph_features_train <- directed_network_feature_function(sub_graph = current_directed_component_train,
                                                              verbose = T)
+
+# Note: Takes about 3 mins
 
 
 # 4. Combing generated data tables into one feature df
@@ -1271,7 +1271,7 @@ final_feature_df_train <- left_join(undirected_weighted_graph_features_train, di
   left_join(fraud_df_train, by = "client_ID")
 
 
-#### TESTING DATA ####
+#### TESTING DATA- second data set generate ####
 
 
 
@@ -1281,6 +1281,99 @@ final_feature_df_train <- left_join(undirected_weighted_graph_features_train, di
 # 4. Post-local-EDA
 
 # 5. Global EDA (network features evolving over time)
+
+# 6. Model construction
+
+# 6.1 Logistic regression
+
+```{r, model construction - logistic regression}
+
+### NETWORK METRICS ###
+
+# 1. Creating network feature df and configuring predictors and response variables
+
+# 1.1 Joining netwotk feature df's
+final_network_feature_df_train <- left_join(undirected_weighted_graph_features_train, directed_graph_features_train, by = "client_ID") %>% 
+  left_join(fraud_df_train, by = "client_ID")
+
+final_network_feature_df_train$is_fraud <- as.factor(if_else(final_network_feature_df_train$is_fraud == T, "T", "F"))
+
+# 1.2 Configuring predictors
+x_train <- as.matrix(final_network_feature_df_train[,-c(1,ncol(final_network_feature_df_train))])
+y_train <- final_network_feature_df_train$is_fraud
+
+# 2. Training logistic regression model wit LASSO reguliser - without using SMOTE
+
+# 2.2 fitting model(s)
+
+# fitting standard logistic regression (LR) model
+
+std_log_reg_model <- glm(is_fraud~., data = final_network_feature_df_train[,-1],
+                          family = "binomial")
+
+
+# Applying LASSO and determining lambda using 10-fold cross validation
+
+lasso_cv_log_reg_model <- cv.glmnet(x = x_train, y = y_train, 
+                    alpha = 1,
+                    type.measure = 'class',
+                    standardize = T, 
+                    family = 'binomial',
+                    nfolds = 10)
+
+
+# 2.3 Making predictions
+
+# standard LR
+pi_hat_std_LR <- predict(std_log_reg_model, type = "response", newx = x_train)
+
+# LR model (LASSO applied with lambda chosen by CV)
+pi_hat_lasso_LR <- predict(lasso_cv_log_reg_model, s = lasso_cv_log_reg_model$lambda.1se,  type = "response", newx = x_train)
+
+
+# Assign threshold of 0.5 to classifiers arbitrarily
+
+Y_hat_std <- ifelse(pi_hat_std_LR >= 0.5, "T", "F")
+Y_hat_cv <- ifelse(pi_hat_lasso_LR >= 0.5, "T", "F")
+
+# 2.4 Evaluating results
+
+
+# 2.4.1 confusion matrix
+
+table(Y_hat_std, y_train)
+
+table(Y_hat_cv, y_train)
+
+
+# creating prediction object
+pred_std_LR <- prediction(pi_hat_std_LR, )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
+
+
+
 
 
 ### DEMO CODE ###
@@ -1377,6 +1470,199 @@ split_point_df_filt <- split_point_df %>%
 
 which(split_point_df_filt$resulting_ratio == min(split_point_df_filt$resulting_ratio))
 
+
+
+```
+
+
+Unused code
+```{r, unused code}
+
+###### 1. TEST TRAIN SPLIT ###### 
+
+# split should be:
+
+# 3.1 Stratified splitting of data - 
+
+set.seed(123)
+train_index <- createDataPartition(accounts_data_final$is_fraud, p = 0.8, list = F)
+
+
+# accounts data
+
+accounts_data_final_train <- accounts_data_final[train_index,]
+accounts_data_final_test <- accounts_data_final[-train_index,]
+
+# transaction data 
+
+# configuring training data set 
+transactions_data_final_train <- transactions_data_final %>% 
+  filter(to %in% accounts_data_final_train$client_ID & from %in% accounts_data_final_train$client_ID)
+
+transactions_data_final_test <- transactions_data_final 
+
+# 3. Data split
+
+# split should be:
+
+# 3.1 Stratified splitting of data - 
+
+set.seed(123)
+train_index <- createDataPartition(accounts_data_final$is_fraud, p = 0.8, list = F)
+
+
+# accounts data
+
+accounts_data_final_train <- accounts_data_final[train_index,]
+accounts_data_final_test <- accounts_data_final[-train_index,]
+
+# transaction data 
+
+# configuring training data set 
+transactions_data_final_train <- transactions_data_final %>% 
+  filter(to %in% accounts_data_final_train$client_ID & from %in% accounts_data_final_train$client_ID)
+
+transactions_data_final_test <- transactions_data_final 
+
+
+#### NEW: Splitting the data based on time stamp variable ###
+
+# grouping the number of transactions per time stamp
+transactions_time_stamp <- transactions_data_final %>% 
+  group_by(TIMESTAMP) %>% 
+  summarise(count = n())
+
+# calculating cumulative count
+total_count <- sum(transactions_time_stamp$count)
+cum_count <- rep(NA, nrow(transactions_time_stamp))
+cum_perc <- rep(NA, nrow(transactions_time_stamp)) 
+
+for (i in 1:nrow(transactions_time_stamp)) {
+  
+  if(i == 1) {
+    
+  cum_count[i] <- transactions_time_stamp$count[i]
+  cum_perc[i] <- 0
+  
+  }else{
+    
+    cum_count[i] <- cum_count[i-1] + transactions_time_stamp$count[i]
+    cum_perc[i] <- round((cum_count[i]/total_count)*100, 2)
+  }
+}
+
+# selecting the time stamp that contains 75% of all the observations (for training)
+
+training_ind <- max(which(cum_perc < 76))
+training_time_stamp <- transactions_time_stamp$TIMESTAMP[training_ind]
+
+# defining training set for transactions
+training_transactions <- transactions_data_final %>% 
+  filter(TIMESTAMP <= training_time_stamp)
+
+# defining training set for accounts
+
+training_unique_acc_id <- unique(c(training_transactions$from,training_transactions$to)) 
+
+# defining training fraudulent accounts
+
+training_fraud_acc <- training_transactions %>% 
+  filter(IS_FRAUD == "True")
+
+training_fraud_acc <- unique(c(training_fraud_acc$from, training_fraud_acc$to))
+
+# defining accounts df
+
+training_accounts <- 
+
+
+
+
+time_stamp %>% 
+ggplot(aes(x = TIMESTAMP, y = count)) + 
+  geom_col()
+
+hist(time_stamp$count)
+
+plot(density(time_stamp$count))
+
+sum(time_stamp$count)*0.75
+
+
+# splitting the data (out-of-time validation)
+
+transactions_test <- transactions_data_raw %>% 
+  mutate(row_index  = 1:nrow(transactions_data_raw)) %>% 
+  mutate(set = if_else(row_index < 0.5480962*nrow(transactions_data_raw), "train", "test"))
+
+
+# visualing some data
+
+transactions_test %>%
+  group_by(IS_FRAUD, set) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = set, y = count, fill = IS_FRAUD )) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_text(aes(label=count), vjust=1.6, position = position_dodge(0.9), size=3.5) +
+  scale_y_log10()
+
+
+# optimiser
+
+split_point_df <- data.frame(split = seq(from = 0.5, to = 0.8, length.out = 500))
+
+transactions_test <- transactions_data_raw %>% 
+  mutate(row_index  = 1:nrow(transactions_data_raw))
+
+test_fraud_ratio <- rep(NA, nrow(split_point_df))
+
+train_fraud_ratio <- rep(NA, nrow(split_point_df))
+
+resulting_ratio <- rep(NA, nrow(split_point_df))
+
+for (i in 1:nrow(split_point_df)) {
+  
+  
+  current_split <- transactions_test %>% 
+    mutate(set = if_else(row_index < split_point_df[i,1]*nrow(transactions_data_raw), "train", "test")) %>% 
+    group_by(set, IS_FRAUD) %>% 
+    summarise(current_count = n())
+  
+  # test
+  test_fraud_total <- current_split$current_count[current_split$set == "test" &  current_split$IS_FRAUD == "True"]
+  test_non_fraud_total <- current_split$current_count[current_split$set == "test" &  current_split$IS_FRAUD == "False"]
+  
+  test_fraud_ratio[i] <-  test_fraud_total/(test_fraud_total + test_non_fraud_total)
+  
+  train_fraud_total <- current_split$current_count[current_split$set == "train" &  current_split$IS_FRAUD == "True"]
+  train_non_fraud_total <- current_split$current_count[current_split$set == "train" &  current_split$IS_FRAUD == "False"]
+  
+  train_fraud_ratio[i] <-  train_fraud_total/(train_fraud_total + train_non_fraud_total)
+  
+  resulting_ratio[i] <- test_fraud_ratio[i] - train_fraud_ratio[i]
+  
+  
+}
+
+split_point_df$test_fraud_ratio <- test_fraud_ratio
+
+split_point_df$train_fraud_ratio <- train_fraud_ratio
+
+split_point_df$resulting_ratio <- resulting_ratio
+
+
+split_point_df %>% 
+  ggplot(aes(x = split, y = resulting_ratio)) +
+  geom_point()
+
+
+split_point_df_filt <- split_point_df %>% 
+  filter(resulting_ratio >= 0 )
+
+
+which(split_point_df_filt$resulting_ratio == min(split_point_df_filt$resulting_ratio))
+
+###### 1. TEST TRAIN SPLIT ###### 
 
 
 ```
