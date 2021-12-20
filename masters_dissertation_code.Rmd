@@ -18,6 +18,7 @@ library(tidyverse)
 library(stringr)
 library(lubridate)
 
+
 # 2. Network Analytics
 library(igraph)
 library(Matrix)
@@ -36,29 +37,34 @@ library(ROCR)
 
 # Note: There is three separate data files: i) accounts, ii) alerts, iii) transactions
 
-# 1. Accounts
-accounts_data_raw <- read.csv("accounts.csv")
+# 1. Training data
+training_accounts_raw <- read.csv("training_set_all_ml_typologies/accounts.csv")
+training_transactions_raw <- read.csv("training_set_all_ml_typologies/transactions.csv")
+training_alert_accounts_raw <- read.csv("training_set_all_ml_typologies/alert_accounts.csv")
+training_alert_transactions_raw <- read.csv("training_set_all_ml_typologies/alert_transactions.csv")
 
-# 2. Alerts
-alerts_data_raw <- read.csv("alerts.csv")
-
-# 3. Transactions
-transactions_data_raw <- read.csv("transactions/transactions.csv")
-
-
+# 1. Training data
+testing_accounts_raw <- read.csv("testing_set_all_ml_typologies/accounts.csv")
+testing_transactions_raw <- read.csv("testing_set_all_ml_typologies/transactions.csv")
+testing_alert_accounts_raw <- read.csv("testing_set_all_ml_typologies/alert_accounts.csv")
+testing_alert_transactions_raw <- read.csv("testing_set_all_ml_typologies/alert_transactions.csv")
 
 
-### SIMULATED DATA ###
+### BASIC STATS - test train ###
 
-accounts_sim <- read.csv("sample/accounts.csv") 
-transactions_sim <- read.csv("sample/transactions.csv") 
-alert_transactions_sim <- read.csv("sample/alert_transactions.csv")
-alert_acc_sim <- read.csv("sample/alert_accounts.csv")
-cash_tx_sim <- read.csv("sample/cash_tx.csv")
-ind_bulk_sim <- read.csv("sample/individuals-bulkload.csv")
-org_bulk_sim <- read.csv("sample/organizations-bulkload.csv")
-resolved_ent_sim <- read.csv("sample/resolvedentities.csv")
-sar_acc_sim <- read.csv("sample/sar_accounts.csv")
+# fraud transactions
+table(training_transactions_raw$is_sar)
+# 0.1% fraud transactions
+
+table(testing_transactions_raw$is_sar)
+# 0.05% fraud transactions
+
+
+# fraud alerts
+table(training_alert_transactions_raw$alert_type)/sum(table(training_alert_transactions_raw$alert_type))*100
+
+
+table(testing_alert_transactions_raw$alert_type)/sum(table(testing_alert_transactions_raw$alert_type))*100
 
 ###  SAMPLE NETORK DATA SET ###
 
@@ -114,6 +120,11 @@ sar_acc_sim <- read.csv("sample/sar_accounts.csv")
 # 2. Pre-local-EDA of each raw data table
 
 ```{r, prelimimary exploratory data analysis of each data set }
+
+
+# Note: some of the plots and stats can be useful
+
+### KAGGLE DATA SET (OLD) ###
 
 # 1. Accounts data
 
@@ -292,6 +303,8 @@ transactions_data_honest <- transactions_data_raw %>%
 #   geom_density() + 
 #   geom_vline(xintercept = mode_tx_honest) + 
 #   scale_x_log10()
+
+
          
 ```
 
@@ -301,41 +314,87 @@ transactions_data_honest <- transactions_data_raw %>%
 
 ```{r, data pre-processing and checks}
 
+# 1. Data preparations
+
+
+# 1.1 Defining needed data-pre processing functions
+# Note: The following function removes and renames the the accounts raw data such that it is ready for downstream processes
+
+# accounts data table
+
+accounts_data_prep_func <- function(accounts_data_raw) {
+  
+  # 1. selecting variables and renaming them
+  
+  accounts_data_up <- accounts_data_raw %>% 
+    select(acct_id, prior_sar_count, initial_deposit ) %>% 
+     rename(client_ID = acct_id,
+           is_fraud = prior_sar_count,
+           init_balance = initial_deposit) %>% 
+    mutate(is_fraud = if_else(is_fraud == "false", F, T))
+}
+
+# transaction data table
+
+transactions_data_prep_func <- function(transactions_data_raw) {
+  
+  # 1. selecting variables and renaming them
+  
+  transactions_data_up <- transactions_data_raw %>% 
+    select(orig_acct, bene_acct,base_amt) %>% 
+     rename(from = orig_acct,
+           to = bene_acct,
+           weight = base_amt)
+}
+
+# 2. Applying data pre-processing functions
+
+# training
+training_transactions_final <- transactions_data_prep_func(training_transactions_raw)
+training_accounts_final <- accounts_data_prep_func(training_accounts_raw)
+
+# testing
+testing_transactions_final <- transactions_data_prep_func(testing_transactions_raw)
+testing_accounts_final <- accounts_data_prep_func(testing_accounts_raw)
+
+
+### KAGGLE DATA SET (OLD) ###
+
 # 1. Data preparation
 
 # 1.1 transactions data & alerts data 
 
 # joining alert type col from alerts df to transactions df 
-alerts_types <- alerts_data_raw %>% 
-  select(ALERT_ID, ALERT_TYPE)
-
-transactions_data_up <- transactions_data_raw %>% 
-  left_join(alerts_types, by = "ALERT_ID") %>% 
-  unique()
+# alerts_types <- alerts_data_raw %>% 
+#   select(ALERT_ID, ALERT_TYPE)
+# 
+# transactions_data_up <- transactions_data_raw %>% 
+#   left_join(alerts_types, by = "ALERT_ID") %>% 
+#   unique()
 
 # replacing NA values formed by transactions that are not fraud
-transactions_data_up[is.na(transactions_data_up)] <- "No Alert"
+# transactions_data_up[is.na(transactions_data_up)] <- "No Alert"
 
 # rearranging columns such that sender node and receiver node is mentioned first in the df
-transactions_data_up <- transactions_data_up[,c(2,3,1,4:ncol(transactions_data_up))]
+# transactions_data_up <- transactions_data_up[,c(2,3,1,4:ncol(transactions_data_up))]
 
 # 1.2 Selecting/renaming only needed cols for networks that will be generated
 
 # nodes
 
-accounts_data_final <- accounts_data_raw %>% 
-  select(ACCOUNT_ID, INIT_BALANCE, IS_FRAUD) %>% 
-  rename(client_ID = ACCOUNT_ID,
-         is_fraud = IS_FRAUD,
-         init_balance = INIT_BALANCE) %>% 
-  mutate(is_fraud = if_else(is_fraud == "true", T, F))
+# accounts_data_final <- accounts_data_raw %>% 
+#   select(ACCOUNT_ID, INIT_BALANCE, IS_FRAUD) %>% 
+#   rename(client_ID = ACCOUNT_ID,
+#          is_fraud = IS_FRAUD,
+#          init_balance = INIT_BALANCE) %>% 
+#   mutate(is_fraud = if_else(is_fraud == "true", T, F))
 
 # edges
-transactions_data_final <- transactions_data_raw %>% 
-  select(SENDER_ACCOUNT_ID, RECEIVER_ACCOUNT_ID, TX_AMOUNT, TIMESTAMP, IS_FRAUD) %>% 
-  rename(from = SENDER_ACCOUNT_ID,
-         to = RECEIVER_ACCOUNT_ID,
-         weight = TX_AMOUNT)
+# transactions_data_final <- transactions_data_raw %>% 
+#   select(SENDER_ACCOUNT_ID, RECEIVER_ACCOUNT_ID, TX_AMOUNT, TIMESTAMP, IS_FRAUD) %>% 
+#   rename(from = SENDER_ACCOUNT_ID,
+#          to = RECEIVER_ACCOUNT_ID,
+#          weight = TX_AMOUNT)
 
 
 # 2. Data checks 
@@ -1183,13 +1242,9 @@ The below code chunk will:
 
 #### TRAINING DATA - first data set generated ####
 
-transactions_data_final_train <- transactions_data_final
-accounts_data_final_train <- accounts_data_final
-
-
 # 1. Extracting transaction features
 
-transaction_feature_df_train <- transaction_feature_function(transaction_df = transactions_data_final_train, accounts_df = accounts_data_final_train)
+transaction_feature_df_train <- transaction_feature_function(transaction_df = training_transactions_final , accounts_df = training_accounts_final)
 
 transaction_feature_df_train$client_ID <- as.character(transaction_feature_df_train$client_ID)
 
@@ -1198,9 +1253,9 @@ transaction_feature_df_train$client_ID <- as.character(transaction_feature_df_tr
 # 2.1 Un-directed-weighted network
 
 # constructing raw network
-undirected_weighted_graph_raw_train <- graph_from_data_frame(d = transactions_data_final_train,
+undirected_weighted_graph_raw_train <- graph_from_data_frame(d = training_transactions_final,
                                                        directed = F,
-                                                       vertices = accounts_data_final_train) 
+                                                       vertices = training_accounts_final) 
   
 # Simplifying the graph (removing multiple edges)
 undirected_weighted_graph_simp_train <- simplify(undirected_weighted_graph_raw_train,
@@ -1210,11 +1265,11 @@ undirected_weighted_graph_simp_train <- simplify(undirected_weighted_graph_raw_t
 
 # 2.2 Directed graph
 
-weight_ind <- which(names(transactions_data_final_train) == 'weight')
+weight_ind <- which(names(training_transactions_final) == 'weight')
 
-directed_graph_train <- graph_from_data_frame(d = transactions_data_final_train[,-weight_ind],
+directed_graph_train <- graph_from_data_frame(d = training_transactions_final[,-weight_ind],
                                        directed = T,
-                                       vertices = accounts_data_final_train)
+                                       vertices = training_accounts_final)
 
 
 # 3. Extract the network features for each component in the graph
@@ -1228,6 +1283,10 @@ undirected_weighted_graph_components_train <- decompose.graph(graph = undirected
                                                  min.vertices = 3) 
 
 # Note: Only one component was identified
+
+### NBNB!!! FOR LOOP SHOULD BE ADDED ##### - Continue here!
+
+
 
 # Extracting graph components
 current_undirected_weighted_component_train <- undirected_weighted_graph_components_train[[1]]
