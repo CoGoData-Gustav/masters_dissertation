@@ -17,6 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(stringr)
 library(lubridate)
+library(stringr)
 
 
 # 2. Network Analytics
@@ -29,7 +30,6 @@ library(glmnet)
 library(ROCR)
 
 ```
-
 
 # 1. Loading data
 
@@ -316,7 +316,6 @@ transactions_data_honest <- transactions_data_raw %>%
 
 # 1. Data preparations
 
-
 # 1.1 Defining needed data-pre processing functions
 # Note: The following function removes and renames the the accounts raw data such that it is ready for downstream processes
 
@@ -332,6 +331,8 @@ accounts_data_prep_func <- function(accounts_data_raw) {
            is_fraud = prior_sar_count,
            init_balance = initial_deposit) %>% 
     mutate(is_fraud = if_else(is_fraud == "false", F, T))
+  
+  return(accounts_data_up)
 }
 
 # transaction data table
@@ -345,6 +346,9 @@ transactions_data_prep_func <- function(transactions_data_raw) {
      rename(from = orig_acct,
            to = bene_acct,
            weight = base_amt)
+  
+  return(transactions_data_up)
+  
 }
 
 # 2. Applying data pre-processing functions
@@ -665,6 +669,9 @@ prob_relational_neighbor_classifier_func <- function(graph, relational_neig_prob
 # The function below classifies all the triangles found in a network as either being legit, fraud or semi-fraud
 triangle_classifier_func <- function(graph){
   
+  
+  if(sum(count_triangles(graph)) > 0){
+  
   # calculates the complete sub-graphs with 3 vertices (i.e triangles)
   cl.tri = cliques(graph,
                    min=3,
@@ -723,6 +730,19 @@ triangle_classifier_func <- function(graph){
                               names_from = triangle_label,
                               values_from = Freq)
   
+  }else{
+    
+   number_vertices <-  vcount(graph)  
+   null_traingle_df <- as.data.frame(matrix(0, number_vertices, 3)) %>% 
+     rename(legit_triangles = V1,
+            semi_fraud_triangles = V2,
+            fraud_triangles = V3)
+   
+   client_ID <- V(graph)$name
+   
+   triangles_df <- cbind(client_ID, null_traingle_df)
+   
+   }
   
   
   return(triangles_df)
@@ -921,8 +941,12 @@ undirected_weighted_network_feature_func <- function(sub_graph, verbose = c(TRUE
   
   # defining start vector for algorithm (0 for legitimate clients and non-zero for fraudsters)
   total_fraud_nodes <- sum(V(sample_network)$is_fraud)
-  fraud_nodes_start_value <- 1/(total_fraud_nodes)
+
   
+  # adding condition if there are any fraud nodes in the network then starting vector for page rank algorithm should be personalised
+  if(total_fraud_nodes > 0){
+  
+  fraud_nodes_start_value <- 1/(total_fraud_nodes)
   start_vec_fraud <- if_else(V(sample_network)$is_fraud == F, 0, fraud_nodes_start_value)
   
   # calculating PageRank
@@ -931,10 +955,15 @@ undirected_weighted_network_feature_func <- function(sub_graph, verbose = c(TRUE
                             directed = F,
                             damping = 0.85,
                             personalized = start_vec_fraud,
-                            weights = E(sample_network)$weight) # can add weights 
+                            weights = E(sample_network)$weight) # can add weights
   
   pr_fraud_loc_uw <- pr_fraud_loc_uw_res$vector
   
+  }else{
+    
+  pr_fraud_loc_uw <-   pr_base_loc_uw
+    
+  }
   
   # 1.4 Compiling results in data frame
   
@@ -1204,7 +1233,7 @@ transaction_feature_function <- function(transaction_df, accounts_df){
   outgoing_transaction_stats_final <- left_join(outgoing_transaction_stats,outgoing_transactions_fraud_non_fraud, by = "from" ) %>% 
     rename(client_ID = from)
   
-  # 3. Creating transaction feature df
+  # 4. Creating transaction feature df
   
   transaction_feature_df <- data.frame(client_ID = accounts_df$client_ID,
                                        init_balance = accounts_df$init_balance)
@@ -1233,106 +1262,157 @@ transaction_feature_function <- function(transaction_df, accounts_df){
 
 # 3.5  Constructing final feature data table
 
-The below code chunk will:
+The below code chunk will define a function that will:
 - Extract the transaction features from data
 - Construct the needed type of networks (weighted-undirected network & Directed network)
 - For each grapgh component (V > 2) extract the weighted-undirected features & directed features
 
 ```{r, constructing final feature data table}
 
-#### TRAINING DATA - first data set generated ####
+# 1. Defining function that outputs final pre-processed data
 
-# 1. Extracting transaction features
-
-transaction_feature_df_train <- transaction_feature_function(transaction_df = training_transactions_final , accounts_df = training_accounts_final)
-
-transaction_feature_df_train$client_ID <- as.character(transaction_feature_df_train$client_ID)
-
-# 2. Constructing needed networks
-
-# 2.1 Un-directed-weighted network
-
-# constructing raw network
-undirected_weighted_graph_raw_train <- graph_from_data_frame(d = training_transactions_final,
-                                                       directed = F,
-                                                       vertices = training_accounts_final) 
+feature_generation_func <- function(final_transactional_df, final_accounts_df) {
   
-# Simplifying the graph (removing multiple edges)
-undirected_weighted_graph_simp_train <- simplify(undirected_weighted_graph_raw_train,
-                                           remove.multiple = T,
-                                           remove.loops = T,
-                                           edge.attr.comb = c(weight = "sum"))
+  # 1. Extracting transaction features
+  
+  print("*** Generating transactional data features ***")
+  
+  transaction_feature_df <- transaction_feature_function(transaction_df = final_transactional_df , accounts_df = final_accounts_df)
+  transaction_feature_df$client_ID <- as.character(transaction_feature_df$client_ID)
+  
+  # 2. Constructing needed networks
+  
+  print("*** Constructing networks ***")
+  
+  # 2.1 Un-directed-weighted network
+  
+  # constructing raw network
+  undirected_weighted_graph_raw <- graph_from_data_frame(d = final_transactional_df,
+                                                               directed = F,
+                                                               vertices = final_accounts_df) 
+  
+  # Simplifying the graph (removing multiple edges)
+  undirected_weighted_graph_simp <- simplify(undirected_weighted_graph_raw,
+                                                   remove.multiple = T,
+                                                   remove.loops = T,
+                                                   edge.attr.comb = c(weight = "sum"))
+  
+  # 2.2 Directed graph
+  
+  weight_ind <- which(names(final_transactional_df) == 'weight')
+  
+  directed_graph <- graph_from_data_frame(d = final_transactional_df[,-weight_ind],
+                                                directed = T,
+                                                vertices = final_accounts_df)
+  
+  # 3. Extract the network features for each component in the generated  graphs
+  
+  print("*** Extracting network features from each component in the graph(s) ***")
+  
+  # 3.1 Un-directed weighted graph
+  
+  print("* Un-direceted weighted graph  *")
+  
+  # decomposing graph into its graph components
+  undirected_weighted_graph_components <- decompose.graph(graph = undirected_weighted_graph_simp,
+                                                                min.vertices = 3) 
+  
+  # creating loop to extract the network features from each graph component
+  
+  undirected_weighted_graph_features <- data.frame()
+  
+  for (i in 1:length(undirected_weighted_graph_components)) {
+    
+    print(paste0("Busy with graph component ", i) )
+    
+    # assigning the ith component
+    current_undirected_weighted_component <- undirected_weighted_graph_components[[i]]
+    
+    # extracting network features
+    current_undirected_weighted_graph_features <- undirected_weighted_network_feature_func(sub_graph = current_undirected_weighted_component, verbose = T)
+    
+    # constructing final feature df
+    undirected_weighted_graph_features <- rbind(undirected_weighted_graph_features, current_undirected_weighted_graph_features)
+  
+  }
+  
+  # Note: The number of accounts we are investigating decreased due to graph components that have less than 3 vertices are ommitted
+  
+  # 3.2 Directed graph
+  
+  print("* Direceted graph  *")
 
-# 2.2 Directed graph
+  # decomposing graph into its graph components
+  directed_graph_components <- decompose.graph(graph = directed_graph,
+                                                     min.vertices = 3) 
+  
+  # Note: Multiple graph components identified
+  
+  # creating loop to extract the network features from each graph component
+  
+  directed_graph_features <- data.frame()
+  
+  for (i in 1:length(directed_graph_components)) {
+    
+    print(paste0("Busy with graph component ", i) )
+    
+    # assigning the ith component
+    current_directed_component <- directed_graph_components[[i]]
+    
+    # extracting network features
+    current_directed_graph_features <- directed_network_feature_function(sub_graph = current_directed_component, verbose = T)
+    
+    # constructing final feature df
+    directed_graph_features <- rbind(directed_graph_features, current_directed_graph_features)
+    
+  }
 
-weight_ind <- which(names(training_transactions_final) == 'weight')
+  
+  # 4. Combing generated data tables into one feature df
+  
+  print("*** Creating feature data tables  ***")
+  
+  client_df <- data.frame(client_ID = as.character(final_accounts_df$client_ID),
+                               is_fraud = final_accounts_df$is_fraud)
+  
+  network_feature_df <- left_join(undirected_weighted_graph_features, directed_graph_features, by = "client_ID") %>%  
+    left_join(client_df, by = "client_ID")
+  
+  network_feature_clients <- data.frame(client_ID = network_feature_df$client_ID)
+  
+  transaction_feature_df <- left_join(network_feature_clients, transaction_feature_df, by = "client_ID") %>% 
+    left_join(client_df, by = "client_ID")
 
-directed_graph_train <- graph_from_data_frame(d = training_transactions_final[,-weight_ind],
-                                       directed = T,
-                                       vertices = training_accounts_final)
-
-
-# 3. Extract the network features for each component in the graph
-
-# NB: This should be a check since the simulator should produce only a single component
-
-# 3.1 Un-directed weighted graph
-
-# decomposing graph into its graph components
-undirected_weighted_graph_components_train <- decompose.graph(graph = undirected_weighted_graph_simp_train,
-                                                 min.vertices = 3) 
-
-# Note: Only one component was identified
-
-### NBNB!!! FOR LOOP SHOULD BE ADDED ##### - Continue here!
-
-
-
-# Extracting graph components
-current_undirected_weighted_component_train <- undirected_weighted_graph_components_train[[1]]
-
-# Note: The number of vertices changed
-
-# extracting features
-
-undirected_weighted_graph_features_train <- undirected_weighted_network_feature_func(sub_graph = current_undirected_weighted_component_train,
-                                                                                verbose = T)
-
-# Note: Takes about 4.5 mins
-
-# 3.2 Directed graph
-
-# decomposing graph into its graph components
-directed_graph_components_train <- decompose.graph(graph = directed_graph_train,
-                                                 min.vertices = 3) 
-# Note: The number of vertices changed
-
-# extracting graph components
-current_directed_component_train <- directed_graph_components_train[[1]]
-
-
-# extracting features
+  feature_tables <- list(network_features = network_feature_df,
+                         transactional_features = transaction_feature_df) 
+  
+  return(feature_tables)
+  
+}
 
 
-directed_graph_features_train <- directed_network_feature_function(sub_graph = current_directed_component_train,
-                                                             verbose = T)
 
-# Note: Takes about 3 mins
+# 2. Configuring training data features
 
+training_features <- feature_generation_func(final_transactional_df = training_transactions_final,
+                                             final_accounts_df = training_accounts_final)
 
-# 4. Combing generated data tables into one feature df
+train_network_features <- training_features$network_features
+train_transactional_features <- training_features$transactional_features
 
-fraud_df_train <- data.frame(client_ID = as.character(accounts_data_final_train$client_ID),
-                          is_fraud = accounts_data_final_train$is_fraud)
+train_fraud_ind <- which(names(train_network_features) == "is_fraud")
+train_all_features <- left_join(train_network_features[,-train_fraud_ind], train_transactional_features, by = "client_ID")
 
-final_feature_df_train <- left_join(undirected_weighted_graph_features_train, directed_graph_features_train, by = "client_ID") %>% 
-  left_join(transaction_feature_df_train, by = "client_ID") %>% 
-  left_join(fraud_df_train, by = "client_ID")
+# 3. Configuring testing data features
 
+testing_features <- feature_generation_func(final_transactional_df = testing_transactions_final,
+                                             final_accounts_df = testing_accounts_final)
 
-#### TESTING DATA- second data set generate ####
+test_network_features <- testing_features$network_features
+test_transactional_features <- testing_features$transactional_features
 
-
+test_fraud_ind <- which(names(train_network_features) == "is_fraud")
+test_all_features <- left_join(test_network_features[,-test_fraud_ind], test_transactional_features, by = "client_ID")
 
 
 ```
@@ -1343,11 +1423,235 @@ final_feature_df_train <- left_join(undirected_weighted_graph_features_train, di
 
 # 6. Model construction
 
+In the following code chunks we will examine the performance of different models if 
+i) Only using network features as inputs
+ii) Only using transactional features as inputs
+iii) Using network and transactional features
+
+
 # 6.1 Logistic regression
 
 ```{r, model construction - logistic regression}
 
-### NETWORK METRICS ###
+# 1. Applying final data-pre processing for LR model
+
+# transforming response to factor variable
+train_network_features$is_fraud <- as.factor(train_network_features$is_fraud)
+train_transactional_features$is_fraud <- as.factor(train_transactional_features$is_fraud)
+train_all_features$is_fraud <- as.factor(train_all_features$is_fraud)
+
+test_network_features$is_fraud <- as.factor(test_network_features$is_fraud)
+test_transactional_features$is_fraud <- as.factor(test_transactional_features$is_fraud)
+test_all_features$is_fraud <- as.factor(test_all_features$is_fraud)
+
+# omitting all columns that have NA values
+train_transactional_features <- train_transactional_features[, colSums(is.na(train_transactional_features)) == 0]
+train_all_features <- train_all_features[, colSums(is.na(train_all_features)) == 0]
+
+test_transactional_features <- test_transactional_features[, colSums(is.na(test_transactional_features)) == 0]
+test_all_features <- test_all_features[, colSums(is.na(test_all_features)) == 0]
+
+# 2. Constructing standard logistic regression models
+
+# network features LR model
+log_std_model_network <- glm(is_fraud ~ . , data = train_network_features[,-1], family = "binomial")
+summary(log_std_model_network)
+round(exp(coef(log_std_model_network)),3)
+
+# transactional features LR model
+log_std_model_trans <- glm(is_fraud ~ . , data = train_transactional_features[,-1], family = "binomial")
+summary(log_std_model_trans)
+round(exp(coef(log_std_model_trans)),3)
+
+# all features LR model
+log_std_model_all <- glm(is_fraud ~ . , data = train_all_features[,-1], family = "binomial")
+summary(log_std_model_all)
+round(exp(coef(log_std_model_all)),3)
+
+# 3. Constructing logistic regression with LASSO penalty
+
+# network features
+log_LASSO_model_network <- glmnet(x = as.matrix(train_network_features[,-c(1,ncol(train_network_features))]),
+                                                y = train_network_features$is_fraud , 
+                                                alpha = 1, 
+                                                standardize = TRUE, 
+                                                family = 'binomial')
+
+plot(log_LASSO_model_network, xvar = 'lambda', label=TRUE)
+
+# transactional features
+
+log_LASSO_model_trans <- glmnet(x = as.matrix(train_transactional_features[,-c(1,ncol(train_transactional_features))]),
+                                                y = train_transactional_features$is_fraud, 
+                                                alpha = 1, 
+                                                standardize = TRUE, 
+                                                family = 'binomial')
+
+plot(log_LASSO_model_trans, xvar = 'lambda', label=TRUE)
+
+# all features
+
+log_LASSO_model_all <- glmnet(x = as.matrix(train_all_features[,-c(1,ncol(train_all_features))]),
+                                                y = train_all_features$is_fraud, 
+                                                alpha = 1, 
+                                                standardize = TRUE, 
+                                                family = 'binomial')
+
+plot(log_LASSO_model_all, xvar = 'lambda', label=TRUE)
+
+
+
+# 3.1 Applying 10-fold CV to determine optimal lambda value
+
+# network features
+log_cv_model_network <- cv.glmnet(x = as.matrix(train_network_features[,-c(1,ncol(train_network_features))]),
+                               y = train_network_features$is_fraud,
+                               alpha = 1, # LASSO
+                               nfolds = 10,
+                               type.measure = "mse",
+                               family = "binomial",
+                               standardize = T)
+
+plot(log_cv_model_network)
+log_cv_model_network$lambda.1se
+
+# transactional features
+log_cv_model_trans <- cv.glmnet(x = as.matrix(train_transactional_features[,-c(1,ncol(train_transactional_features))]),
+                               y = train_transactional_features$is_fraud,
+                               alpha = 1, # LASSO
+                               nfolds = 10,
+                               type.measure = "mse",
+                               family = "binomial",
+                               standardize = T)
+
+plot(log_cv_model_trans)
+log_cv_model_trans$lambda.1se
+
+# all features
+log_cv_model_all <- cv.glmnet(x = as.matrix(train_all_features[,-c(1,ncol(train_all_features))]),
+                               y = train_all_features$is_fraud,
+                               alpha = 1, # LASSO
+                               nfolds = 10,
+                               type.measure = "mse",
+                               family = "binomial",
+                               standardize = T)
+
+plot(log_cv_model_all)
+log_cv_model_all$lambda.1se
+
+
+# 4. Probability Predictions
+
+# 4.1 Training set
+
+# 4.1.1 Network features
+
+# Regular LR model
+pi_hat_log_std_network <- predict(log_std_model_network, type = "response")
+
+# LASSO LR model
+pi_hat_log_lasso_network <- predict(log_cv_model_network, 
+                                    newx = as.matrix(train_network_features[,-c(1,ncol(train_network_features))]),
+                                    s = log_cv_model_network$lambda.1se,
+                                    type = "response")
+
+
+# 4.1.2 Transactions features
+
+# Regular LR model
+pi_hat_log_std_trans <- predict(log_std_model_trans, type = "response")
+
+# LASSO LR model
+pi_hat_log_lasso_trans <- predict(log_cv_model_trans, 
+                                    newx = as.matrix(train_transactional_features[,-c(1,ncol(train_transactional_features))]),
+                                    s = log_cv_model_trans$lambda.1se,
+                                    type = "response")
+
+
+# 4.1.3 all features
+pi_hat_log_std_all <- predict(log_std_model_all, type = "response")
+
+# LASSO LR model
+pi_hat_log_lasso_all <- predict(log_cv_model_all, 
+                                    newx = as.matrix(train_all_features[,-c(1,ncol(train_all_features))]),
+                                    s = log_cv_model_all$lambda.1se,
+                                    type = "response")
+
+
+# determining optimal threshold value
+
+## ROC curves
+
+### Network features
+
+# standard LR
+pred_std_network <- prediction(pi_hat_log_std_network, train_network_features$is_fraud)
+perf_std_network <- performance(pred_std_network, "tpr", "fpr")
+plot(perf_std_network, colorize = FALSE, col = 'black')
+lines(c(0,1), c(0,1), col = 'gray', lty = 4)
+performance(pred_std_network, measure = 'auc')@y.values[[1]]
+
+
+# LASSO LR
+pred_lasso_network <- prediction(pi_hat_log_lasso_network, train_network_features$is_fraud)
+perf_lasso_network <- performance(pred_lasso_network, "tpr", "fpr")
+plot(perf_lasso_network, colorize = FALSE, col = 'black')
+lines(c(0,1), c(0,1), col = 'gray', lty = 4)
+performance(pred_lasso_network, measure = 'auc')@y.values[[1]]
+
+
+### Transactional features
+
+# standard LR
+pred_std_trans <- prediction(pi_hat_log_std_trans, train_transactional_features$is_fraud)
+perf_std_trans <- performance(pred_std_trans, "tpr", "fpr")
+plot(perf_std_trans, colorize = FALSE, col = 'black')
+lines(c(0,1), c(0,1), col = 'gray', lty = 4)
+performance(pred_std_trans, measure = 'auc')@y.values[[1]]
+
+
+# LASSO LR
+pred_lasso_trans <- prediction(pi_hat_log_lasso_trans, train_transactional_features$is_fraud)
+perf_lasso_trans <- performance(pred_lasso_trans, "tpr", "fpr")
+plot(perf_lasso_trans, colorize = FALSE, col = 'black')
+lines(c(0,1), c(0,1), col = 'gray', lty = 4)
+performance(pred_lasso_trans, measure = 'auc')@y.values[[1]]
+
+### all features
+
+# standard LR
+pred_std_all <- prediction(pi_hat_log_std_all, train_all_features$is_fraud)
+perf_std_all <- performance(pred_std_all, "tpr", "fpr")
+plot(perf_std_all, colorize = FALSE, col = 'black')
+lines(c(0,1), c(0,1), col = 'gray', lty = 4)
+performance(pred_std_all, measure = 'auc')@y.values[[1]]
+
+
+# LASSO LR
+pred_lasso_all <- prediction(pi_hat_log_lasso_all, train_all_features$is_fraud)
+perf_lasso_all <- performance(pred_lasso_all, "tpr", "fpr")
+plot(perf_lasso_all, colorize = FALSE, col = 'black')
+lines(c(0,1), c(0,1), col = 'gray', lty = 4)
+performance(pred_lasso_all, measure = 'auc')@y.values[[1]]
+
+
+
+# NB! FOR EACH MODEL DETERMINE THE OPTIMAL THRESHOLD!!! - continue here
+
+
+## precision and recall curves
+
+
+
+
+
+
+
+
+
+
+
+### NETWORK METRICS - OLD ###
 
 # 1. Creating network feature df and configuring predictors and response variables
 
@@ -1440,6 +1744,18 @@ pred_std_LR <- prediction(pi_hat_std_LR, )
 Tests code
 
 ```{r, test code}
+
+####
+
+
+  
+  
+
+
+
+
+
+####
 
 time_stamp <- transactions_data_raw %>% 
   group_by(TIMESTAMP) %>% 
@@ -1722,6 +2038,66 @@ split_point_df_filt <- split_point_df %>%
 which(split_point_df_filt$resulting_ratio == min(split_point_df_filt$resulting_ratio))
 
 ###### 1. TEST TRAIN SPLIT ###### 
+
+
+
+#### Period stats (in funcrion) ####
+
+
+# 3. Generating time period stats for accounts
+  
+  # 3.1 payment made (to)
+  
+  # all accounts that made a payment
+  payment_IDs <- unique(transaction_df$from)
+  
+  # data frame that stores the results
+  payment_period_stats_df <- data.frame(client_ID = payment_IDs,
+                                        payment_period_max = rep(NA, length(payment_IDs)),
+                                        payment_period_min = rep(NA, length(payment_IDs)),
+                                        payment_period_avg = rep(NA, length(payment_IDs)),
+                                        payment_period_std = rep(NA, length(payment_IDs)))
+  
+  
+  for (i in 1:length(payment_IDs)) {
+    
+    # filtering a specific account that made payment(s)
+    current_df <- transaction_df %>% 
+      filter(from == payment_IDs[i]) %>% 
+      arrange(tran_timestamp)
+    
+    if(nrow(current_df) > 1){
+      
+      # creating vector that stores the time difference between payments made by account
+      current_days_difference <- rep(NA,nrow(current_df))
+      
+      for (j in 2:nrow(test_df)) {
+        
+        current_days_difference[j] <- difftime(current_df$tran_timestamp[j],current_df$tran_timestamp[j-1], units = "days")
+        
+      }
+      
+      # saving stats variables to created data frame
+      payment_period_stats_df$payment_period_max[i] <- max(current_days_difference, na.rm =T)
+      payment_period_stats_df$payment_period_min[i] <- min(current_days_difference, na.rm =T) 
+      payment_period_stats_df$payment_period_avg[i] <- mean(current_days_difference, na.rm =T) 
+      payment_period_stats_df$payment_period_std[i] <- sd(current_days_difference, na.rm =T) 
+      
+    }else{
+      
+      # saving stats variables to created data frame
+      payment_period_stats_df$payment_period_max[i] <- 1
+      payment_period_stats_df$payment_period_min[i] <- 1 
+      payment_period_stats_df$payment_period_avg[i] <- 1 
+      payment_period_stats_df$payment_period_std[i] <- 0 
+      
+      
+      
+      
+    }
+    
+    
+  }
 
 
 ```
