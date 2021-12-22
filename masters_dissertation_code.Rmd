@@ -18,6 +18,7 @@ library(tidyverse)
 library(stringr)
 library(lubridate)
 library(stringr)
+library(DataExplorer)
 
 
 # 2. Network Analytics
@@ -1540,11 +1541,9 @@ plot(log_cv_model_all)
 log_cv_model_all$lambda.1se
 
 
-# 4. Probability Predictions
+# 4. Probability Predictions (Training)
 
-# 4.1 Training set
-
-# 4.1.1 Network features
+# 4.1 Network features
 
 # Regular LR model
 pi_hat_log_std_network <- predict(log_std_model_network, type = "response")
@@ -1556,7 +1555,7 @@ pi_hat_log_lasso_network <- predict(log_cv_model_network,
                                     type = "response")
 
 
-# 4.1.2 Transactions features
+# 4.2 Transactions features
 
 # Regular LR model
 pi_hat_log_std_trans <- predict(log_std_model_trans, type = "response")
@@ -1568,7 +1567,7 @@ pi_hat_log_lasso_trans <- predict(log_cv_model_trans,
                                     type = "response")
 
 
-# 4.1.3 all features
+# 4.3 all features
 pi_hat_log_std_all <- predict(log_std_model_all, type = "response")
 
 # LASSO LR model
@@ -1578,157 +1577,393 @@ pi_hat_log_lasso_all <- predict(log_cv_model_all,
                                     type = "response")
 
 
-# determining optimal threshold value
+# 5. Hyper- parameter tuning of threshold value
 
-## ROC curves
+# 5.1 Defining function that extract the optimal threshold value according to ROC and precision recall curves
 
-### Network features
+# 5.1.1 ROC
+optimal_threshold_ROC <- function(model_performance){
+  
+  # 1. Calculating G-mean (Geometric mean)
+  gmeans <- sqrt(model_performance@y.values[[1]]*(1-model_performance@x.values[[1]]) )
+  
+  # 2. Extracting threshold values
+  thresholds <- model_performance@alpha.values[[1]]
+  
+  # 3. Getting index where geometric mean is the highes
+  max_gmean_ind <- which(gmeans == max(gmeans, na.rm = T))
+  
+  # Extracting Index
+  optimal_ROC_threshold <- thresholds[max_gmean_ind]
+  
+  if(length(optimal_ROC_threshold) > 1){
+    
+    optimal_ROC_threshold <- optimal_ROC_threshold[1]
+    
+  }
+
+  
+  # 4. Plotting results
+  plot(model_performance, colorize = FALSE, col = 'black')
+  lines(c(0,1), c(0,1), col = 'gray', lty = 4)
+  points(model_performance@x.values[[1]][max_gmean_ind] , model_performance@y.values[[1]][max_gmean_ind] , col = "red", pch = 19)
+  text(model_performance@x.values[[1]][max_gmean_ind] , model_performance@y.values[[1]][max_gmean_ind], labels = round(optimal_ROC_threshold,3), col = "red", pos = 3)
+  legend("bottomright", legend=c("Optimal threshold", "Standard logistic regression model", "No skill classifier"), col=c("red", "black", "gray"), pch = c(19, NA, NA), lty = c(0,1,4))
+  
+   ROC_plot <- recordPlot()
+   plot.new()
+  
+  
+  ROC_threshold_res <- list(optimal_threshold = optimal_ROC_threshold,
+                            tpr = model_performance@y.values[[1]][max_gmean_ind],
+                            fpr = model_performance@x.values[[1]][max_gmean_ind],
+                            max_G_mean = max(gmeans, na.rm = T),
+                            ROC_plot = ROC_plot )
+  
+  return(ROC_threshold_res)
+  
+}
+
+
+# 5.1.1 ROC  
+optimal_threshold_PR <- function(model_performance){
+  
+  
+  # 1. Calculating PR F-measure
+  f_measure <- (2 * model_performance@y.values[[1]] * model_performance@x.values[[1]])/(model_performance@x.values[[1]] + model_performance@y.values[[1]])
+  
+  # 2. Find index of largest F-measure
+  max_f_ind <- which(f_measure == max(f_measure, na.rm = T))
+  
+  # 3. Optimal threshold value
+  
+  optimal_threshold <- model_performance@alpha.values[[1]][max_f_ind]
+  
+  # 4. Plotting results
+  plot(model_performance, colorize = FALSE, col = 'black', ylim = c(-0.05,1))
+  abline(h=0, col="gray", lty = 4)
+  points(model_performance@x.values[[1]][max_f_ind] , model_performance@y.values[[1]][max_f_ind] , col = "red", pch = 19)
+  text(model_performance@x.values[[1]][max_f_ind] , model_performance@y.values[[1]][max_f_ind], labels = round(optimal_threshold,3), col = "red", pos = 3)
+  legend("left",box.lty=0, inset = 0.02, legend=c("Optimal threshold", "Standard logistic regression model", "No skill classifier"), col=c("red", "black", "gray"), pch = c(19, NA, NA), lty = c(0,1,4))
+  
+  PR_plot <- recordPlot()
+  plot.new()
+  
+  PR_threshold_res <- list(optimal_threshold = optimal_threshold,
+                           recall = model_performance@y.values[[1]][max_gmean_ind],
+                           precision = model_performance@x.values[[1]][max_gmean_ind],
+                           max_f_measure = max(f_measure, na.rm = T),
+                           PR_plot = PR_plot)
+  
+  return(PR_threshold_res)
+  
+}
+
+
+# 5.2 Calculating performance of each model based on ROC curve and optimal threshold value
+
+# 5.2.1  Network features
 
 # standard LR
 pred_std_network <- prediction(pi_hat_log_std_network, train_network_features$is_fraud)
 perf_std_network <- performance(pred_std_network, "tpr", "fpr")
-plot(perf_std_network, colorize = FALSE, col = 'black')
-lines(c(0,1), c(0,1), col = 'gray', lty = 4)
-performance(pred_std_network, measure = 'auc')@y.values[[1]]
 
 
 # LASSO LR
 pred_lasso_network <- prediction(pi_hat_log_lasso_network, train_network_features$is_fraud)
 perf_lasso_network <- performance(pred_lasso_network, "tpr", "fpr")
-plot(perf_lasso_network, colorize = FALSE, col = 'black')
-lines(c(0,1), c(0,1), col = 'gray', lty = 4)
-performance(pred_lasso_network, measure = 'auc')@y.values[[1]]
 
 
-### Transactional features
+# 5.2.2 Transactional features
 
 # standard LR
 pred_std_trans <- prediction(pi_hat_log_std_trans, train_transactional_features$is_fraud)
 perf_std_trans <- performance(pred_std_trans, "tpr", "fpr")
-plot(perf_std_trans, colorize = FALSE, col = 'black')
-lines(c(0,1), c(0,1), col = 'gray', lty = 4)
-performance(pred_std_trans, measure = 'auc')@y.values[[1]]
-
 
 # LASSO LR
 pred_lasso_trans <- prediction(pi_hat_log_lasso_trans, train_transactional_features$is_fraud)
 perf_lasso_trans <- performance(pred_lasso_trans, "tpr", "fpr")
-plot(perf_lasso_trans, colorize = FALSE, col = 'black')
-lines(c(0,1), c(0,1), col = 'gray', lty = 4)
-performance(pred_lasso_trans, measure = 'auc')@y.values[[1]]
 
-### all features
+
+# 5.2.3 all features
 
 # standard LR
 pred_std_all <- prediction(pi_hat_log_std_all, train_all_features$is_fraud)
 perf_std_all <- performance(pred_std_all, "tpr", "fpr")
-plot(perf_std_all, colorize = FALSE, col = 'black')
-lines(c(0,1), c(0,1), col = 'gray', lty = 4)
-performance(pred_std_all, measure = 'auc')@y.values[[1]]
 
 
 # LASSO LR
 pred_lasso_all <- prediction(pi_hat_log_lasso_all, train_all_features$is_fraud)
 perf_lasso_all <- performance(pred_lasso_all, "tpr", "fpr")
-plot(perf_lasso_all, colorize = FALSE, col = 'black')
-lines(c(0,1), c(0,1), col = 'gray', lty = 4)
-performance(pred_lasso_all, measure = 'auc')@y.values[[1]]
 
 
+# Calculating optimal threshold values according to ROC curves 
 
-# NB! FOR EACH MODEL DETERMINE THE OPTIMAL THRESHOLD!!! - continue here
+#  Network features
+threshold_std_network <- optimal_threshold_ROC(perf_std_network)
+threshold_lasso_network <- optimal_threshold_ROC(perf_lasso_network)
 
+#  transaction features
+threshold_std_trans <- optimal_threshold_ROC(perf_std_trans)
+threshold_lasso_trans <- optimal_threshold_ROC(perf_lasso_trans)
 
-## precision and recall curves
-
-
-
-
-
-
-
-
-
-
-
-### NETWORK METRICS - OLD ###
-
-# 1. Creating network feature df and configuring predictors and response variables
-
-# 1.1 Joining netwotk feature df's
-final_network_feature_df_train <- left_join(undirected_weighted_graph_features_train, directed_graph_features_train, by = "client_ID") %>% 
-  left_join(fraud_df_train, by = "client_ID")
-
-final_network_feature_df_train$is_fraud <- as.factor(if_else(final_network_feature_df_train$is_fraud == T, "T", "F"))
-
-# 1.2 Configuring predictors
-x_train <- as.matrix(final_network_feature_df_train[,-c(1,ncol(final_network_feature_df_train))])
-y_train <- final_network_feature_df_train$is_fraud
-
-# 2. Training logistic regression model wit LASSO reguliser - without using SMOTE
-
-# 2.2 fitting model(s)
-
-# fitting standard logistic regression (LR) model
-
-std_log_reg_model <- glm(is_fraud~., data = final_network_feature_df_train[,-1],
-                          family = "binomial")
+# transaction features
+threshold_std_all <- optimal_threshold_ROC(perf_std_all)
+threshold_lasso_all <- optimal_threshold_ROC(perf_lasso_all)
 
 
-# Applying LASSO and determining lambda using 10-fold cross validation
+# 5.3 Calculating performance of each model based on precision-recall curves and detetrmnig optimal threshold value
 
-lasso_cv_log_reg_model <- cv.glmnet(x = x_train, y = y_train, 
-                    alpha = 1,
-                    type.measure = 'class',
-                    standardize = T, 
-                    family = 'binomial',
-                    nfolds = 10)
+# Note: Unlike the ROC Curve, a precision-recall curve focuses on the performance of a classifier on the positive (minority class) only.
 
-
-# 2.3 Making predictions
+# 5.3.1  Network features
 
 # standard LR
-pi_hat_std_LR <- predict(std_log_reg_model, type = "response", newx = x_train)
+perf_std_network_pr <- performance(pred_std_network, "prec", "rec")
 
-# LR model (LASSO applied with lambda chosen by CV)
-pi_hat_lasso_LR <- predict(lasso_cv_log_reg_model, s = lasso_cv_log_reg_model$lambda.1se,  type = "response", newx = x_train)
+# LASSO LR
 
+perf_lasso_network_pr <- performance(pred_lasso_network, "prec", "rec")
 
-# Assign threshold of 0.5 to classifiers arbitrarily
+# 5.3.2 Transactional features
 
-Y_hat_std <- ifelse(pi_hat_std_LR >= 0.5, "T", "F")
-Y_hat_cv <- ifelse(pi_hat_lasso_LR >= 0.5, "T", "F")
+# standard LR
+perf_std_trans_pr <- performance(pred_std_trans, "prec", "rec")
 
-# 2.4 Evaluating results
+# LASSO LR
+perf_lasso_trans_pr <- performance(pred_lasso_trans, "prec", "rec")
 
+# 5.3.3 all features
 
-# 2.4.1 confusion matrix
+# standard LR
+perf_std_all_pr <- performance(pred_std_all, "prec", "rec")
 
-table(Y_hat_std, y_train)
-
-table(Y_hat_cv, y_train)
-
-
-# creating prediction object
-pred_std_LR <- prediction(pi_hat_std_LR, )
+# LASSO LR
+perf_lasso_all_pr <- performance(pred_lasso_all, "prec", "rec")
 
 
+# Calculating optimal threshold values according to ROC curves 
+
+#  Network features
+threshold_std_network_pr <- optimal_threshold_PR(perf_std_network_pr)
+threshold_lasso_network_pr <- optimal_threshold_PR(perf_lasso_network_pr)
+
+#  transaction features
+threshold_std_trans_pr <- optimal_threshold_PR(perf_std_trans_pr)
+threshold_lasso_trans_pr <- optimal_threshold_PR(perf_lasso_trans_pr)
+
+# transaction features
+threshold_std_all_pr <- optimal_threshold_PR(perf_std_all_pr)
+threshold_lasso_all_pr <- optimal_threshold_PR(perf_lasso_all_pr)
+
+# 6. Calculating the models performance on training set
+
+Y_train <- train_network_features$is_fraud
+
+# 6.1 Network features
+
+# standard LR
+y_hat_log_std_network_ROC <- if_else(pi_hat_log_std_network >= threshold_std_network$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_std_network_PR <- if_else(pi_hat_log_std_network >= threshold_std_network_pr$optimal_threshold, "TRUE", "FALSE" )
+
+# LASSO LR
+y_hat_log_lasso_network_ROC <- if_else(pi_hat_log_lasso_network >= threshold_lasso_network$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_lasso_network_PR <- if_else(pi_hat_log_lasso_network >= threshold_lasso_network_pr$optimal_threshold, "TRUE", "FALSE" )
+
+# 6.2 Transactional features
+
+# standard LR
+y_hat_log_std_trans_ROC <- if_else(pi_hat_log_std_trans >= threshold_std_trans$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_std_trans_PR <- if_else(pi_hat_log_std_trans >= threshold_std_trans_pr$optimal_threshold, "TRUE", "FALSE" )
+
+# LASSO LR
+y_hat_log_lasso_trans_ROC <- if_else(pi_hat_log_lasso_trans >= threshold_lasso_trans$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_lasso_trans_PR <- if_else(pi_hat_log_lasso_trans >= threshold_lasso_trans_pr$optimal_threshold, "TRUE", "FALSE" )
+
+
+# 6.3 All features
+
+# standard LR
+y_hat_log_std_all_ROC <- if_else(pi_hat_log_std_all >= threshold_std_all$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_std_all_PR <- if_else(pi_hat_log_std_all >= threshold_std_all_pr$optimal_threshold, "TRUE", "FALSE" )
+
+# LASSO LR
+y_hat_log_lasso_all_ROC <- if_else(pi_hat_log_lasso_all >= threshold_lasso_all$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_lasso_all_PR <- if_else(pi_hat_log_lasso_all >= threshold_lasso_all_pr$optimal_threshold, "TRUE", "FALSE" )
+
+
+# saving all confusion matrices of all the models in a list
+
+log_train_results <- list(std_network_ROC = table(y_hat_log_std_network_ROC, Y_train),
+                          std_network_PR = table(y_hat_log_std_network_PR, Y_train),
+                          lasso_network_ROC = table(y_hat_log_lasso_network_ROC, Y_train),
+                          lasso_network_PR = table(y_hat_log_lasso_network_PR, Y_train),
+                          std_trans_ROC = table(y_hat_log_std_trans_ROC, Y_train),
+                          std_trans_PR = table(y_hat_log_std_trans_PR, Y_train),
+                          lasso_trans_ROC = table(y_hat_log_lasso_trans_ROC, Y_train),
+                          lasso_trans_PR = table(y_hat_log_lasso_trans_PR, Y_train),
+                          std_all_ROC = table(y_hat_log_std_all_ROC, Y_train),
+                          std_all_PR = table(y_hat_log_std_all_PR, Y_train),
+                          lasso_all_ROC = table(y_hat_log_lasso_all_ROC, Y_train),
+                          lasso_all_PR = table(y_hat_log_lasso_all_PR, Y_train))
+
+# defining function that calculates classification accuracy
+
+clas_accuracy_func <- function(conf_matrix_list){
+  
+  # 1. Creating vector that will contain the classification accuracy 
+  class_accur_res <- rep(NA, length(conf_matrix_list))
+  
+  # 2. Loop through to calculate classification accuracy
+  for (i in 1:length(conf_matrix_list)) {
+    
+    current_confusion_mat <- conf_matrix_list[[i]]
+    
+    current_class_accuracy <- round((current_confusion_mat[1,1] + current_confusion_mat[2,2])/sum(current_confusion_mat),3)
+    
+    class_accur_res[i] <- current_class_accuracy
+    
+  }
+  
+  result_df <- data.frame(log_model = names(conf_matrix_list),
+                          class_accur = class_accur_res,
+                          lasso_aaplied = rep(c(F,F,T,T),3),
+                          threshold_tuning = rep(c("ROC threshold-tuning","Precision-recall threshold-tuning"),6))
+  
+  return(result_df)
+  
+}
+
+# calculating training result
+
+log_train_res <- clas_accuracy_func(log_train_results)
+
+
+# visualizing results
+
+log_train_res %>% 
+ggplot(aes(x = reorder(log_model, -class_accur), y = class_accur, group = 1, colour = lasso_aaplied)) +
+  geom_point() +
+  geom_line(colour = "gray") + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(colour = "Lasso applied", x = "Logistic regression models", y = "Classification accuracy" ) +
+  facet_wrap(threshold_tuning~.)
+  
+
+# 7. Testing models performance
+
+# 7.1 Probability predictions with test data set
+
+# 7.1.1 Network features
+
+# Regular LR model
+pi_hat_log_std_network_test <- predict(log_std_model_network, newdata = test_network_features[,-1], type = "response")
+
+# LASSO LR model
+pi_hat_log_lasso_network_test <- predict(log_cv_model_network, 
+                                    newx = as.matrix(test_network_features[,-c(1,ncol(test_network_features))]),
+                                    s = log_cv_model_network$lambda.1se,
+                                    type = "response")
+
+# 7.1.2 Transactions features
+
+# Regular LR model
+pi_hat_log_std_trans_test <- predict(log_std_model_trans, newdata = test_transactional_features[,-1], type = "response")
+
+# LASSO LR model
+pi_hat_log_lasso_trans_test <- predict(log_cv_model_trans, 
+                                    newx = as.matrix(test_transactional_features[,-c(1,ncol(test_transactional_features))]),
+                                    s = log_cv_model_trans$lambda.1se,
+                                    type = "response")
+
+
+# 7.1.3 all features
+pi_hat_log_std_all_test <- predict(log_std_model_all, newdata = test_all_features[,-1] , type = "response")
+
+# LASSO LR model
+pi_hat_log_lasso_all_test <- predict(log_cv_model_all, 
+                                    newx = as.matrix(test_all_features[,-c(1,ncol(test_all_features))]),
+                                    s = log_cv_model_all$lambda.1se,
+                                    type = "response")
+
+# 8. Actual test prediction given probabilities
+
+Y_test <- test_network_features$is_fraud
+
+# standard LR
+y_hat_log_std_network_ROC_test <- if_else(pi_hat_log_std_network_test >= threshold_std_network$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_std_network_PR_test <- if_else(pi_hat_log_std_network_test >= threshold_std_network_pr$optimal_threshold, "TRUE", "FALSE" )
+
+# LASSO LR
+y_hat_log_lasso_network_ROC_test <- if_else(pi_hat_log_lasso_network_test >= threshold_lasso_network$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_lasso_network_PR_test <- if_else(pi_hat_log_lasso_network_test >= threshold_lasso_network_pr$optimal_threshold, "TRUE", "FALSE" )
+
+# 6.2 Transactional features
+
+# standard LR
+y_hat_log_std_trans_ROC_test <- if_else(pi_hat_log_std_trans_test >= threshold_std_trans$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_std_trans_PR_test <- if_else(pi_hat_log_std_trans_test >= threshold_std_trans_pr$optimal_threshold, "TRUE", "FALSE" )
+
+# LASSO LR
+y_hat_log_lasso_trans_ROC_test <- if_else(pi_hat_log_lasso_trans_test >= threshold_lasso_trans$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_lasso_trans_PR_test <- if_else(pi_hat_log_lasso_trans_test >= threshold_lasso_trans_pr$optimal_threshold, "TRUE", "FALSE" )
+
+
+# 6.3 All features
+
+# standard LR
+y_hat_log_std_all_ROC_test <- if_else(pi_hat_log_std_all_test >= threshold_std_all$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_std_all_PR_test <- if_else(pi_hat_log_std_all_test >= threshold_std_all_pr$optimal_threshold, "TRUE", "FALSE" )
+
+# LASSO LR
+y_hat_log_lasso_all_ROC_test <- if_else(pi_hat_log_lasso_all_test >= threshold_lasso_all$optimal_threshold, "TRUE", "FALSE" )
+y_hat_log_lasso_all_PR_test <- if_else(pi_hat_log_lasso_all_test >= threshold_lasso_all_pr$optimal_threshold, "TRUE", "FALSE" )
+
+
+# saving all confusion matrices of all the models in a list
+
+log_test_results <- list(std_network_ROC = table(y_hat_log_std_network_ROC_test, Y_test),
+                          std_network_PR = table(y_hat_log_std_network_PR_test, Y_test),
+                          lasso_network_ROC = table(y_hat_log_lasso_network_ROC_test, Y_test),
+                          lasso_network_PR = table(y_hat_log_lasso_network_PR_test, Y_test),
+                          std_trans_ROC = table(y_hat_log_std_trans_ROC_test, Y_test),
+                          std_trans_PR = table(y_hat_log_std_trans_PR_test, Y_test),
+                          lasso_trans_ROC = table(y_hat_log_lasso_trans_ROC_test, Y_test),
+                          lasso_trans_PR = table(y_hat_log_lasso_trans_PR_test, Y_test),
+                          std_all_ROC = table(y_hat_log_std_all_ROC_test, Y_test),
+                          std_all_PR = table(y_hat_log_std_all_PR_test, Y_test),
+                          lasso_all_ROC = table(y_hat_log_lasso_all_ROC_test, Y_test),
+                          lasso_all_PR = table(y_hat_log_lasso_all_PR_test, Y_test))
+
+# calculating training result
+
+log_test_res <- clas_accuracy_func(log_test_results)
+
+
+# visualizing results
+
+log_test_res %>% 
+ggplot(aes(x = reorder(log_model, -class_accur), y = class_accur, group = 1, colour = lasso_aaplied)) +
+  geom_point() +
+  geom_line(colour = "gray") + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(colour = "Lasso applied", x = "Logistic regression models", y = "Classification accuracy" ) +
+  facet_wrap(threshold_tuning~.)
 
 
 
+```
 
 
+### EDA of testing and training sets ###
 
+```{r,  eda of testing and training sets}
 
+plot_boxplot(train_all_features, by = "is_fraud")
 
-
-
-
-
-
-
-
-
+plot_boxplot(test_all_features, by = "is_fraud")
 
 
 
@@ -1745,7 +1980,16 @@ Tests code
 
 ```{r, test code}
 
-####
+#### EDA TEst training set
+train_all_features %>% 
+  create_report(y = "is_fraud",
+                report_title = "EDA - training data" )
+
+test_all_features %>% 
+  create_report(y = "is_fraud",
+                report_title = "EDA - testing data" )
+
+
 
 
   
