@@ -1,0 +1,5 @@
+{
+  "dense_units": 32,
+  "batch_size": 60,
+  "epochs": 47
+}

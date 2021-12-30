@@ -17,18 +17,34 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(stringr)
 library(lubridate)
-library(stringr)
-library(DataExplorer)
+#library(DataExplorer)
+library(GGally)
+library(gridExtra)
 
 
 # 2. Network Analytics
 library(igraph)
-library(Matrix)
 
 # 3. ML packages
 library(caret)
 library(glmnet)
 library(ROCR)
+
+# install.packages("keras")
+# install.packages("tensorflow")
+# 
+# install.packages("devtools")
+# 
+# devtools::install_github("rstudio/keras", dependencies = T)
+# devtools::install_github("rstudio/tensorflow", dependencies = T)
+
+library(keras)
+library(tensorflow)
+
+library(tfruns)
+
+
+
 
 ```
 
@@ -1415,6 +1431,12 @@ test_transactional_features <- testing_features$transactional_features
 test_fraud_ind <- which(names(train_network_features) == "is_fraud")
 test_all_features <- left_join(test_network_features[,-test_fraud_ind], test_transactional_features, by = "client_ID")
 
+# writing CSV's
+
+
+write.csv()
+example_data_set <- read.csv("diabetes.csv")
+
 
 ```
 
@@ -1430,7 +1452,7 @@ ii) Only using transactional features as inputs
 iii) Using network and transactional features
 
 
-# 6.1 Logistic regression
+# 6.1 Logistic regression models 
 
 ```{r, model construction - logistic regression}
 
@@ -1956,23 +1978,252 @@ ggplot(aes(x = reorder(log_model, -class_accur), y = class_accur, group = 1, col
 
 ```
 
+# 6.2 Neural network models
 
-### EDA of testing and training sets ###
+# 6.2.1 Data-pre-processing
 
-```{r,  eda of testing and training sets}
+```{r, data pre-processing -  neural network models}
 
-plot_boxplot(train_all_features, by = "is_fraud")
+# Note: The approach is to start simple and build up in complexity. For each NN model the batch size and number of epochs needs to be determined. 
 
-plot_boxplot(test_all_features, by = "is_fraud")
+# 1. pre-processing of testing and training data
+
+# 1.1 Configuring training data 
+
+train_target_nn <- train_network_features %>% 
+  select(is_fraud) %>% 
+  mutate(is_fraud = if_else(is_fraud == T, 1,0)) %>% 
+  to_categorical()
+
+# Note: The training target will be the same for all data sets (above we used the network feature data set but we could have either one of the other two).
+
+# 1.1.1 removing client_ID, assigning a numeric value to response, and scaling features
+
+# network features 
+train_network_features_nn <- train_network_features %>% 
+  select(-client_ID, -is_fraud) %>% 
+  scale()
+
+# transaction features 
+
+## omitting all columns that have NA values
+train_transactional_features <- train_transactional_features[, colSums(is.na(train_transactional_features)) == 0]
+
+train_transactional_features_nn <- train_transactional_features %>% 
+  select(-client_ID, -is_fraud) %>% 
+  scale()
+
+# All features
+
+## omitting all columns that have NA values
+train_all_features <- train_all_features[, colSums(is.na(train_all_features)) == 0]
+
+train_all_features_nn <- train_all_features %>% 
+  select(-client_ID, -is_fraud) %>% 
+  scale()
 
 
+# 1.2 Configuring testing data
+
+test_target_nn <- test_network_features %>% 
+  select(is_fraud) %>% 
+  mutate(is_fraud = if_else(is_fraud == T, 1,0)) %>% 
+  to_categorical()
+
+
+# 1.2.1 removing client_ID, assigning a numeric value to response, and scaling features
+
+# network features
+test_network_features_nn <- test_network_features %>% 
+  select(-client_ID, -is_fraud) %>% 
+  scale()
+
+# transaction features 
+
+## omitting all columns that have NA values
+test_transactional_features <- test_transactional_features[, colSums(is.na(test_transactional_features)) == 0]
+
+test_transactional_features_nn <- test_transactional_features %>% 
+  select(-client_ID, -is_fraud) %>% 
+  scale()
+
+# All features
+
+## omitting all columns that have NA values
+test_all_features <- test_all_features[, colSums(is.na(test_all_features)) == 0]
+
+test_all_features_nn <- test_all_features %>% 
+  select(-client_ID, -is_fraud) %>% 
+  scale()
+
+#### test NN - keras ####
+
+# 1. Define model architecture
+
+test_model <- keras_model_sequential()
+
+test_model %>% 
+  layer_dense(units = 36, activation = "relu", input_shape = c(27)) %>% 
+  layer_dense(units = 2, activation = "softmax")
+# 2. compiling model - specifying loss and optimizer
+
+
+test_model %>% 
+  compile(
+    loss = 'categorical_crossentropy',
+    optimizer = optimizer_adam(learning_rate = 0.01),
+    metrics = c('accuracy')
+    )
+
+# 3. training model
+
+history <- test_model %>% fit(
+  train_network_features_nn, 
+  train_target_nn, 
+  epochs = 300, 
+  batch_size = 5, 
+  validation_split = 0.2, 
+  shuffle = TRUE
+  )
+
+# 4. evaluation of model (predicting test set values)
+
+test_model %>% evaluate(test_network_features_nn , test_target_nn)
+
+# Display conduction matrix
+
+Y_test_hat <- predict_classes(test_model, test_network_features_nn)
+table(test_network_features$is_fraud, Y_test_hat)
+
+#### test NN - keras ####
 
 ```
 
 
+6.2.2 Hyper-parameter tuning
+
+```{r, hyper-parameter tuning -  neural network models}
+
+# 1. Defining first experiment:
+
+# Establishing broad range of choices for hyper-parameters:
+# i) Epochs
+# ii) Batch size
+# iii) 1st layer hidden units
+
+epochs_vec <- round(seq(from = 5, to = 100, length.out = 10), 0)
+batch_size_vec <- seq(from = 10, to = 100, length.out = 10 )
+dense_units_vec <- c(8,16,32,64,128)
+
+start <- Sys.time()
+runs_1 <- tuning_run("experiment_1.R",
+                   flags = list(batch_size = batch_size_vec,
+                                epochs = epochs_vec,
+                                dense_units = dense_units_vec)) 
+
+end <- Sys.time()
+
+# Note: Took 12 hours to run
+
+
+# 1.1 Exploring results for experiment via visualisations
+
+# Note: The following plots should give an indication as to what combination of neurons, batch size and epochs seem to perform well.
+
+# minor data type changes for plots
+
+runs_1_plot <- runs_1
+
+runs_1_plot$flag_dense_units <- as.factor(runs_1_plot$flag_dense_units)
+runs_1_plot$flag_batch_size <- as.factor(runs_1_plot$flag_batch_size)
+runs_1_plot$flag_epochs <- as.factor(runs_1_plot$flag_epochs)
+
+
+# 1.1.1 box plots - facet wrap on number of hidden units
+
+# defining functions that calculate the upper and lower quantiles
+
+q1_func <- function(x){
+  
+  q1 <- quantile(x, probs = c(0.25))
+  
+  return(q1)
+  
+}
+
+q3_func <- function(x){
+  
+  q3 <- quantile(x, probs = c(0.75))
+  
+  return(q3)
+  
+}
+
+# batch size
+
+runs_1_plot  %>% 
+  ggplot(aes(x = flag_batch_size, y = metric_val_acc, fill = flag_batch_size)) +
+  geom_boxplot() +
+  labs(x = "Batch size", y = "Validation accuracy") +
+  scale_fill_brewer(palette = "Set3") +
+  facet_wrap(flag_dense_units~.) +
+  stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) + 
+  stat_summary(fun = q1_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") +
+  stat_summary(fun = q3_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "none")
+
+# Finding: i) Overall the val accuracy seems to stay stable for most unit sizes. ii) Generally, for all units the validation accuracy slightly increases with higher batch sizes (especially seen with units = 32).
+# Conclusion: Consider using range for batch sizes 80-100.
+
+
+# epochs
+runs_1_plot  %>% 
+  ggplot(aes(x = flag_epochs, y = metric_val_acc, fill = flag_epochs)) +
+  geom_boxplot() +
+  labs(x = "Epochs", y = "Validation accuracy") +
+  facet_wrap(flag_dense_units~.) +
+  scale_fill_brewer(palette = "Set3") +
+  stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) +
+  stat_summary(fun = q1_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") +
+  stat_summary(fun = q3_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "none")
+
+# Finding: i) Overall the val accuracy seems to decrease as the number of epochs increase (especially for units 32,64,128). ii) Generally, there  is a slight peak at 16 and 26 epochs (see 8,16,32).
+# Conclusion: Consider using a range of between 16-26 for epochs
+
+runs_1_plot %>% 
+  ggplot(aes(x = metric_acc, y = metric_val_acc, colour = flag_dense_units)) +
+  geom_point(alpha = 0.8) +
+  labs(title = "Grid of batch sizes", x = "Training accuracy", y = "Validation accuracy") + 
+  geom_vline(xintercept = 0.985, colour = "red", linetype = "dashed") + 
+  geom_hline(yintercept = 0.955, colour = "red", linetype = "dashed") + 
+  facet_wrap(flag_batch_size~.) +
+  scale_colour_discrete(name = "Hidden layer units") +
+  theme_bw()
+  
+
+runs_1_plot %>% 
+  ggplot(aes(x = metric_acc, y = metric_val_acc, colour = flag_dense_units)) +
+  labs(title = "Grid of epochs", x = "Training accuracy", y = "Validation accuracy") +
+  geom_point(alpha = 0.8) +
+  geom_vline(xintercept = 0.985, colour = "red", linetype = "dashed") + 
+  geom_hline(yintercept = 0.955, colour = "red", linetype = "dashed") + 
+  scale_colour_discrete(name = "Hidden layer units") +
+  facet_wrap(flag_epochs~.) +
+  theme_bw()
+
+# NB! Include these plots in Appendix and mention that with the first set of hyper-parameters that were tuned plots such as these were also made, but no real deduction could be made from them (deductions could be made in how the model genaralises based on the tuned hyper-parameters). The dashed lines were arbitrarily chosen to show that good performance would be in the upper-right quadrant (high-training accuracy and high validation accuracy) 
+
+
+# 2. Defining second experiment:
+
+# Note: Using the findings of the first experiment the following experiment 
 
 
 
+```
 
 ### DEMO CODE ###
 
@@ -2096,6 +2347,82 @@ which(split_point_df_filt$resulting_ratio == min(split_point_df_filt$resulting_r
 
 Unused code
 ```{r, unused code}
+### Precision recall function
+
+y_true_test <- sample(c(1,0), prob = c(0.05, 0.95), 100, replace = T)
+y_pred_test <- sample(c(1,0),prob = c(0.05, 0.95), 100, replace = T)
+
+
+
+recall <- function(y_true, y_pred){
+  
+  # confusion matrix
+  table <- table(y_true, y_pred)
+  
+  # true positive
+  TP <- table[2,2]
+  
+  # false negative
+  FN <- table[1,2]
+  
+  # recall
+  recall <- TP/(TP+FN)
+  
+  return(recall)
+  
+}
+
+
+precision <- function(y_true, y_pred){
+  
+  # confusion matrix
+  table <- table(y_true, y_pred)
+  
+  # true positive
+  TP <- table[2,2]
+  
+  # false positive
+  FP <- table[2,1]
+  
+  # precision
+  precision <- TP/(TP+FP)
+  
+  return(precision)
+  
+}
+
+f1_score <- function(y_true, y_pred){
+  
+  precision <- precision(y_true, y_pred)
+  recall <- recall(y_true, y_pred)
+  
+  f1_score <- (2*precision*recall)/(precision + recall)
+  
+  return(f1_score)
+  
+}
+
+balanced_accuracy <- function(y_true, y_pred){
+  
+  # confusion matrix
+  table <- table(y_true, y_pred)
+  
+  TP <-  table[2,2]
+  P <- sum(table[2,])
+  
+  TN <- table[1,1]
+  N <- sum(table[1,])
+  
+  
+  balanced_accuracy <- (TP/P + TN/N)/2
+  
+  return(balanced_accuracy)
+  
+  
+}
+
+
+
 
 ###### 1. TEST TRAIN SPLIT ###### 
 

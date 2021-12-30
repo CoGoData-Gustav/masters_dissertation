@@ -1,0 +1,4 @@
+{
+  "message": "could not find function \"layer_dense\"",
+  "traceback": ["keras_model_sequential() %>% layer_dense(units = FLAGS$dense_units, \n    activation = \"relu\", input_shape = c(27)) %>% layer_dense(units = 2, \n    activation = \"softmax\")", "eval(ei, envir)", "eval(ei, envir)", "withVisible(eval(ei, envir))", "tuning_run(\"experiment_1.R\", flags = list(batch_size = c(5, 10), \n    epochs = c(5, 20), dense_units = c(8, 16)))"]
+}
