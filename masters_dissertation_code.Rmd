@@ -20,6 +20,8 @@ library(lubridate)
 #library(DataExplorer)
 library(GGally)
 library(gridExtra)
+library(gridtext)
+library(grid)
 
 
 # 2. Network Analytics
@@ -40,7 +42,6 @@ library(ROCR)
 
 library(keras)
 library(tensorflow)
-
 library(tfruns)
 
 
@@ -70,18 +71,18 @@ testing_alert_transactions_raw <- read.csv("testing_set_all_ml_typologies/alert_
 ### BASIC STATS - test train ###
 
 # fraud transactions
-table(training_transactions_raw$is_sar)
+#table(training_transactions_raw$is_sar)
 # 0.1% fraud transactions
 
-table(testing_transactions_raw$is_sar)
+#table(testing_transactions_raw$is_sar)
 # 0.05% fraud transactions
 
 
 # fraud alerts
-table(training_alert_transactions_raw$alert_type)/sum(table(training_alert_transactions_raw$alert_type))*100
+#table(training_alert_transactions_raw$alert_type)/sum(table(training_alert_transactions_raw$alert_type))*100
 
 
-table(testing_alert_transactions_raw$alert_type)/sum(table(testing_alert_transactions_raw$alert_type))*100
+#table(testing_alert_transactions_raw$alert_type)/sum(table(testing_alert_transactions_raw$alert_type))*100
 
 ###  SAMPLE NETORK DATA SET ###
 
@@ -134,9 +135,9 @@ table(testing_alert_transactions_raw$alert_type)/sum(table(testing_alert_transac
 
 ```
 
-# 2. Pre-local-EDA of each raw data table
+# 2. EDA of raw data table(s)
 
-```{r, prelimimary exploratory data analysis of each data set }
+```{r, EDA of raw data table(s)}
 
 
 # Note: some of the plots and stats can be useful
@@ -325,11 +326,11 @@ transactions_data_honest <- transactions_data_raw %>%
          
 ```
 
-# 3. Feature Extraction
+# 3. Feature engieering 
 
-# 3.1 Data pre-processing, data split and checks
+# 3.1 Data preperation
 
-```{r, data pre-processing and checks}
+```{r, data preperation - feature engineering}
 
 # 1. Data preparations
 
@@ -359,10 +360,11 @@ transactions_data_prep_func <- function(transactions_data_raw) {
   # 1. selecting variables and renaming them
   
   transactions_data_up <- transactions_data_raw %>% 
-    select(orig_acct, bene_acct,base_amt) %>% 
+    select(orig_acct, bene_acct,base_amt, tran_timestamp) %>% 
      rename(from = orig_acct,
            to = bene_acct,
-           weight = base_amt)
+           weight = base_amt) %>% 
+    mutate(tran_timestamp = ymd(str_sub(end =10, tran_timestamp)))
   
   return(transactions_data_up)
   
@@ -472,7 +474,7 @@ testing_accounts_final <- accounts_data_prep_func(testing_accounts_raw)
 
 *Note:* The simplified graph will only consider one edge between incident nodes.
 
-```{r, network construction and feature extraction - undirected weighted network (simplified) }
+```{r, network construction and feature extraction - undirected weighted network (simplified) - feature engineering}
 
 #### Un-directed weighted Network feature generation function ####
 
@@ -482,7 +484,6 @@ testing_accounts_final <- accounts_data_prep_func(testing_accounts_raw)
 # output: a data frame containing all the network metrics extracted from the sub-graph. 
 
 # NB! The function will only  be able to take as input an un-directed-weighted network.
-
 
 # 1. Defining additional functions that will be used within the network feature generation function
 
@@ -1021,7 +1022,7 @@ return(sample_network_feature_df)
 
 # 3.3 Network construction - Directed network (non-simplified) function(s)
 
-```{r, network construction - directed network (non-simplified)}
+```{r, network construction - directed network (non-simplified) - feature engineering}
 
 #### Directed Network feature generation function ####
 
@@ -1169,10 +1170,9 @@ return(sample_network_feature_df)
 
 ```
 
-
 # 3.4 Feature extraction - Transactional data function(s)
 
-```{r, Feature extraction - Transactional data }
+```{r, feature extraction - transactional data function(s) - feature engineering}
 
 #### Transaction feature generation function ####
 
@@ -1250,17 +1250,121 @@ transaction_feature_function <- function(transaction_df, accounts_df){
   outgoing_transaction_stats_final <- left_join(outgoing_transaction_stats,outgoing_transactions_fraud_non_fraud, by = "from" ) %>% 
     rename(client_ID = from)
   
+  #### Period stats (in funcrion) ####
+  
+  # 3. Generating time period stats for accounts
+  
+  # 3.1 payment made (from)
+  
+  # all accounts that made a payment
+  payment_IDs <- unique(transaction_df$from)
+  
+  # data frame that stores the results
+  payment_period_stats_df <- data.frame(client_ID = payment_IDs,
+                                        payment_period_max = rep(NA, length(payment_IDs)),
+                                        payment_period_min = rep(NA, length(payment_IDs)),
+                                        payment_period_avg = rep(NA, length(payment_IDs)),
+                                        payment_period_std = rep(NA, length(payment_IDs)))
+  
+  for (i in 1:length(payment_IDs)) {
+    
+    # filtering a specific account that made payment(s)
+    current_df <- transaction_df %>% 
+      filter(from == payment_IDs[i]) %>% 
+      arrange(tran_timestamp)
+    
+    if(nrow(current_df) > 1){
+      
+      # creating vector that stores the time difference between payments made by account
+      current_days_difference <- rep(NA,nrow(current_df))
+      
+      for (j in 2:nrow(current_df)) {
+        
+        current_days_difference[j] <- difftime(current_df$tran_timestamp[j],current_df$tran_timestamp[j-1], units = "days")
+        
+      }
+      
+      # saving stats variables to created data frame
+      payment_period_stats_df$payment_period_max[i] <- max(current_days_difference, na.rm =T)
+      payment_period_stats_df$payment_period_min[i] <- min(current_days_difference, na.rm =T) + 1
+      payment_period_stats_df$payment_period_avg[i] <- mean(current_days_difference, na.rm =T) 
+      payment_period_stats_df$payment_period_std[i] <- sd(current_days_difference, na.rm =T) 
+      
+    }else{
+      
+      # saving stats variables to created data frame
+      payment_period_stats_df$payment_period_max[i] <- 1
+      payment_period_stats_df$payment_period_min[i] <- 1 
+      payment_period_stats_df$payment_period_avg[i] <- 1 
+      payment_period_stats_df$payment_period_std[i] <- 0 
+      
+    }
+    
+  }
+  
+  # 3.2 payment received (to)
+  
+  # all accounts that received a payment
+  payment_IDs <- unique(transaction_df$to)
+  
+  # data frame that stores the results
+  receive_period_stats_df <- data.frame(client_ID = payment_IDs,
+                                        receive_period_max = rep(NA, length(payment_IDs)),
+                                        receive_period_min = rep(NA, length(payment_IDs)),
+                                        receive_period_avg = rep(NA, length(payment_IDs)),
+                                        receive_period_std = rep(NA, length(payment_IDs)))
+  
+  
+  for (i in 1:length(payment_IDs)) {
+    
+    # filtering a specific account that made payment(s)
+    current_df <- transaction_df %>% 
+      filter(to == payment_IDs[i]) %>% 
+      arrange(tran_timestamp)
+    
+    if(nrow(current_df) > 1){
+      
+      # creating vector that stores the time difference between payments made by account
+      current_days_difference <- rep(NA, nrow(current_df))
+      
+      for (j in 2:nrow(current_df)) {
+        
+        current_days_difference[j] <- difftime(current_df$tran_timestamp[j],current_df$tran_timestamp[j-1], units = "days")
+        
+      }
+      
+      # saving stats variables to created data frame
+      receive_period_stats_df$receive_period_max[i] <- max(current_days_difference, na.rm =T)
+      receive_period_stats_df$receive_period_min[i] <- min(current_days_difference, na.rm =T) + 1 # Assumption that payment is made in the morning
+      receive_period_stats_df$receive_period_avg[i] <- mean(current_days_difference, na.rm =T) 
+      receive_period_stats_df$receive_period_std[i] <- sd(current_days_difference, na.rm =T) 
+      
+    }else{
+      
+      # saving stats variables to created data frame
+      receive_period_stats_df$receive_period_max[i] <- 1
+      receive_period_stats_df$receive_period_min[i] <- 1 
+      receive_period_stats_df$receive_period_avg[i] <- 1 
+      receive_period_stats_df$receive_period_std[i] <- 0 
+      
+    }
+    
+  }
+  
+  
   # 4. Creating transaction feature df
   
   transaction_feature_df <- data.frame(client_ID = accounts_df$client_ID,
                                        init_balance = accounts_df$init_balance)
   
   transaction_feature_df <- left_join(transaction_feature_df, incoming_transaction_stats_final, by = "client_ID") %>% 
-    left_join(outgoing_transaction_stats_final, by = "client_ID")
+    left_join(outgoing_transaction_stats_final, by = "client_ID") %>% 
+    left_join(receive_period_stats_df, by = "client_ID") %>% 
+    left_join(payment_period_stats_df, by = "client_ID")
   
   # replacing NA values
   
-  cols_to_replace <- c("incoming_total", "incoming_avg", "incoming_max", "incoming_min", "incoming_round_numbers_count", "non_fraud_total_income", "fraud_total_income" , "outgoing_total", "outgoing_avg", "outgoing_max", "outgoing_min", "outgoing_round_numbers_count", "total_non_fraud_payments", "total_fraud_payments")
+  cols_to_replace <- c("incoming_total", "incoming_avg", "incoming_max", "incoming_min", "incoming_round_numbers_count", "non_fraud_total_income", "fraud_total_income" , "outgoing_total", "outgoing_avg", "outgoing_max", "outgoing_min", "outgoing_round_numbers_count", "total_non_fraud_payments", "total_fraud_payments", "receive_period_min", "payment_period_min", "receive_period_max" , "payment_period_max", "payment_period_avg", "receive_period_avg")
   
   transaction_feature_df[cols_to_replace][is.na(transaction_feature_df[cols_to_replace])] <- 0
   
@@ -1271,20 +1375,19 @@ transaction_feature_function <- function(transaction_df, accounts_df){
 }
 
 
-#transaction_df <- transaction_feature_function(transaction_df = edge_df,accounts_df = node_df  ) 
-
-
 ```
 
+# 3.5  Constructing structured data tables
 
-# 3.5  Constructing final feature data table
+*Note:*
+1. For the network feature data set a function will:
+ i) Extract the transaction features from data.
+ ii) Construct the needed type of networks (weighted-undirected network & Directed network).
+ iii) For each graph component (V > 2) extract the weighted-undirected features & directed features.
 
-The below code chunk will define a function that will:
-- Extract the transaction features from data
-- Construct the needed type of networks (weighted-undirected network & Directed network)
-- For each grapgh component (V > 2) extract the weighted-undirected features & directed features
+2. The transactional and combined feature data sets will be generated at the end of the chunk (does not form part of above function)  
 
-```{r, constructing final feature data table}
+```{r, constructing structured data tables - feature engineering}
 
 # 1. Defining function that outputs final pre-processed data
 
@@ -1431,32 +1534,30 @@ test_transactional_features <- testing_features$transactional_features
 test_fraud_ind <- which(names(train_network_features) == "is_fraud")
 test_all_features <- left_join(test_network_features[,-test_fraud_ind], test_transactional_features, by = "client_ID")
 
-# writing CSV's
-
-
-write.csv()
-example_data_set <- read.csv("diabetes.csv")
-
 
 ```
 
-# 4. Post-local-EDA
-
-# 5. Global EDA (network features evolving over time)
-
-# 6. Model construction
-
-In the following code chunks we will examine the performance of different models if 
-i) Only using network features as inputs
-ii) Only using transactional features as inputs
-iii) Using network and transactional features
+# 4. EDA of structured data table(s)
 
 
-# 6.1 Logistic regression models 
+```{r, EDA of structured data}
 
-```{r, model construction - logistic regression}
+#(can include how network evolve over time - if there is time)
 
-# 1. Applying final data-pre processing for LR model
+```
+
+# 5. Modelling
+
+In the following code chunks we will examine the performance of different models:
+i) Only using network features as inputs (network feature data set).
+ii) Only using transactional features as inputs (transactional feature data set).
+iii) Using network and transactional features (combined feature data set).
+
+# 5.1 Logistic regression models 
+
+```{r, logistic regression models - modelling}
+
+# 1. Data-pre processing for LR model
 
 # transforming response to factor variable
 train_network_features$is_fraud <- as.factor(train_network_features$is_fraud)
@@ -1978,11 +2079,11 @@ ggplot(aes(x = reorder(log_model, -class_accur), y = class_accur, group = 1, col
 
 ```
 
-# 6.2 Neural network models
+# 5.2 Neural network models
 
-# 6.2.1 Data-pre-processing
+# 5.2.1 Data-pre-processing
 
-```{r, data pre-processing -  neural network models}
+```{r, data pre-processing -  neural network models - modelling}
 
 # Note: The approach is to start simple and build up in complexity. For each NN model the batch size and number of epochs needs to be determined. 
 
@@ -2056,53 +2157,15 @@ test_all_features_nn <- test_all_features %>%
   select(-client_ID, -is_fraud) %>% 
   scale()
 
-#### test NN - keras ####
-
-# 1. Define model architecture
-
-test_model <- keras_model_sequential()
-
-test_model %>% 
-  layer_dense(units = 36, activation = "relu", input_shape = c(27)) %>% 
-  layer_dense(units = 2, activation = "softmax")
-# 2. compiling model - specifying loss and optimizer
-
-
-test_model %>% 
-  compile(
-    loss = 'categorical_crossentropy',
-    optimizer = optimizer_adam(learning_rate = 0.01),
-    metrics = c('accuracy')
-    )
-
-# 3. training model
-
-history <- test_model %>% fit(
-  train_network_features_nn, 
-  train_target_nn, 
-  epochs = 300, 
-  batch_size = 5, 
-  validation_split = 0.2, 
-  shuffle = TRUE
-  )
-
-# 4. evaluation of model (predicting test set values)
-
-test_model %>% evaluate(test_network_features_nn , test_target_nn)
-
-# Display conduction matrix
-
-Y_test_hat <- predict_classes(test_model, test_network_features_nn)
-table(test_network_features$is_fraud, Y_test_hat)
-
-#### test NN - keras ####
-
 ```
 
 
-6.2.2 Hyper-parameter tuning
+5.2.2 Hyper-parameter tuning
 
-```{r, hyper-parameter tuning -  neural network models}
+```{r, hyper-parameter tuning -  neural network models - modelling}
+
+# Note: This code chunk will be reused for all three data sets that need to be evaluated. Only the inputs to the "experiment.R" will change slighly.
+
 
 # 1. Defining first experiment:
 
@@ -2111,7 +2174,7 @@ table(test_network_features$is_fraud, Y_test_hat)
 # ii) Batch size
 # iii) 1st layer hidden units
 
-epochs_vec <- round(seq(from = 5, to = 100, length.out = 10), 0)
+epochs_vec <- round(seq(from = 5, to = 75, length.out = 10), 0)
 batch_size_vec <- seq(from = 10, to = 100, length.out = 10 )
 dense_units_vec <- c(8,16,32,64,128)
 
@@ -2125,6 +2188,9 @@ end <- Sys.time()
 
 # Note: Took 12 hours to run
 
+### TEMP ####
+runs_1 <- ls_runs(runs_dir = "exp_1_runs")
+### TEMP ####
 
 # 1.1 Exploring results for experiment via visualisations
 
@@ -2164,7 +2230,7 @@ q3_func <- function(x){
 runs_1_plot  %>% 
   ggplot(aes(x = flag_batch_size, y = metric_val_acc, fill = flag_batch_size)) +
   geom_boxplot() +
-  labs(x = "Batch size", y = "Validation accuracy") +
+  labs(title = "Grid of different number of hidden neurons", x = "Batch size", y = "Validation accuracy") +
   scale_fill_brewer(palette = "Set3") +
   facet_wrap(flag_dense_units~.) +
   stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) + 
@@ -2173,15 +2239,15 @@ runs_1_plot  %>%
   theme_bw() + 
   theme(legend.position = "none")
 
-# Finding: i) Overall the val accuracy seems to stay stable for most unit sizes. ii) Generally, for all units the validation accuracy slightly increases with higher batch sizes (especially seen with units = 32).
-# Conclusion: Consider using range for batch sizes 80-100.
+# Finding: 
+# Conclusion: consider using batch size of 10 with 64 or 128 hidden neurons.
 
 
 # epochs
 runs_1_plot  %>% 
   ggplot(aes(x = flag_epochs, y = metric_val_acc, fill = flag_epochs)) +
   geom_boxplot() +
-  labs(x = "Epochs", y = "Validation accuracy") +
+  labs(title = "Grid of different number of hidden neurons", x = "Epochs", y = "Validation accuracy") +
   facet_wrap(flag_dense_units~.) +
   scale_fill_brewer(palette = "Set3") +
   stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) +
@@ -2190,46 +2256,581 @@ runs_1_plot  %>%
   theme_bw() + 
   theme(legend.position = "none")
 
-# Finding: i) Overall the val accuracy seems to decrease as the number of epochs increase (especially for units 32,64,128). ii) Generally, there  is a slight peak at 16 and 26 epochs (see 8,16,32).
-# Conclusion: Consider using a range of between 16-26 for epochs
+# Finding: 
+# Conclusion:  
 
 runs_1_plot %>% 
   ggplot(aes(x = metric_acc, y = metric_val_acc, colour = flag_dense_units)) +
-  geom_point(alpha = 0.8) +
+  geom_point(alpha = 0.5) +
   labs(title = "Grid of batch sizes", x = "Training accuracy", y = "Validation accuracy") + 
-  geom_vline(xintercept = 0.985, colour = "red", linetype = "dashed") + 
-  geom_hline(yintercept = 0.955, colour = "red", linetype = "dashed") + 
+  geom_abline(intercept = 0) + 
+  #geom_vline(xintercept = 0.985, colour = "red", linetype = "dashed") + 
+  #geom_hline(yintercept = 0.955, colour = "red", linetype = "dashed") + 
   facet_wrap(flag_batch_size~.) +
   scale_colour_discrete(name = "Hidden layer units") +
   theme_bw()
-  
 
+# No conclusion really
+  
 runs_1_plot %>% 
   ggplot(aes(x = metric_acc, y = metric_val_acc, colour = flag_dense_units)) +
   labs(title = "Grid of epochs", x = "Training accuracy", y = "Validation accuracy") +
-  geom_point(alpha = 0.8) +
-  geom_vline(xintercept = 0.985, colour = "red", linetype = "dashed") + 
-  geom_hline(yintercept = 0.955, colour = "red", linetype = "dashed") + 
+  geom_point(alpha = 0.5) +
+  #geom_vline(xintercept = 0.985, colour = "red", linetype = "dashed") + 
+  #geom_hline(yintercept = 0.955, colour = "red", linetype = "dashed") + 
   scale_colour_discrete(name = "Hidden layer units") +
   facet_wrap(flag_epochs~.) +
   theme_bw()
 
-# NB! Include these plots in Appendix and mention that with the first set of hyper-parameters that were tuned plots such as these were also made, but no real deduction could be made from them (deductions could be made in how the model genaralises based on the tuned hyper-parameters). The dashed lines were arbitrarily chosen to show that good performance would be in the upper-right quadrant (high-training accuracy and high validation accuracy) 
+# Findings: i) Points (models) become more clustered at the top right hand side indicating that the higher epochs are porducing more generalised models. ii) Seem like the purple (128) and blue (64 units) points are prominent in the upper right hand corners of the plots. 
+# Conclusion: Use +/- 75 epochs with hidden layer units 64 or 128
+
+# 1.1.2 Bar charts
+
+# extracting 90th percentile for validation accuracy
+
+perc_90th <- quantile(runs_1$metric_val_acc, probs = 0.9)
+
+runs_1_plot <- runs_1 %>% 
+  filter(metric_val_acc > perc_90th)
+
+# hidden layer units
+exp_1_bar_dense_units <- runs_1_plot %>% 
+  group_by(flag_dense_units) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_dense_units,-count), y = count, fill = as.factor(flag_dense_units))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = 0, size = 3.5) + 
+  labs(x = "Hidden layer units", y = " ") + 
+  scale_fill_brewer(palette = "Paired") + 
+  theme_bw() +
+  theme(legend.position = "none")
+
+# batch size
+exp_1_bar_batch_size <- runs_1_plot %>% 
+  group_by(flag_batch_size) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_batch_size,-count), y = count, fill = as.factor(flag_batch_size))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = 0, size = 3.5) + 
+  labs(x = "Batch size", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# epochs
+exp_1_bar_epochs <- runs_1_plot %>% 
+  group_by(flag_epochs) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_epochs,-count), y = count, fill = as.factor(flag_epochs))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = 0, size = 3.5) + 
+  labs(x = "Epochs", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# defining grid containing all bar plots
+grid.arrange(arrangeGrob(exp_1_bar_dense_units, 
+                         exp_1_bar_batch_size, 
+                         exp_1_bar_epochs, 
+                         nrow = 2,
+                         left = textGrob(paste0("Count of validation accuracy above ", perc_90th, " (90th percentile)"), rot = 90))
+)
+
 
 
 # 2. Defining second experiment:
 
 # Note: Using the findings of the first experiment the following experiment 
 
+epochs_vec <- round(seq(67, 100, length.out = 3),0)
+batch_size_vec <- c(5, 10, 15)
+dense_units_vec <- c(64, 128)
+lambda_vec <- c(0.001, 0.01, 0.1, 1, 2)
+
+start <- Sys.time()
+runs_2 <- tuning_run("experiment_2.R",
+                   flags = list(batch_size = batch_size_vec,
+                                epochs = epochs_vec,
+                                dense_units = dense_units_vec,
+                                lambda = lambda_vec)) 
+
+end <- Sys.time()
+
+# Note: Took 3.6 hours to run
+
+# 2.1 Exploring results for experiment via visualizations
+
+# 2..1.1 box plots
+
+runs_2_plot <- runs_2
+
+runs_2_plot$flag_dense_units <- as.factor(runs_2_plot$flag_dense_units)
+runs_2_plot$flag_batch_size <- as.factor(runs_2_plot$flag_batch_size)
+runs_2_plot$flag_epochs <- as.factor(runs_2_plot$flag_epochs)
+runs_2_plot$flag_lambda <- as.factor(runs_2_plot$flag_lambda)
+
+# batch size
+
+runs_2_plot  %>% 
+  ggplot(aes(x = flag_batch_size, y = metric_val_acc, fill = flag_batch_size)) +
+  geom_boxplot() +
+  labs(title = "Grid of different L2 regularization factors", x = "Batch size", y = "Validation accuracy") +
+  scale_fill_brewer(palette = "Paired") +
+  facet_wrap(flag_lambda~.) +
+  #stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) + 
+  #stat_summary(fun = q1_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") +
+  #stat_summary(fun = q3_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "none")
+
+# Finding: i) Lambda values of 0.01 and 0.1 yield very good results for all batch sizes considered (small std and high medians). Specifically a batch size of 100 and lambda value of 0.01.
+# Conclusion: Consider using lambda value of 0.01 and batch size of 100.
+
+
+# epochs
+runs_2_plot  %>% 
+  ggplot(aes(x = flag_epochs, y = metric_val_acc, fill = flag_epochs)) +
+  geom_boxplot() +
+  labs(title = "Grid of different L2 regularization factors", x = "Epochs", y = "Validation accuracy") +
+  facet_wrap(flag_lambda~.) +
+  scale_fill_brewer(palette = "Set3") +
+  #stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) +
+  #stat_summary(fun = q1_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") +
+  #stat_summary(fun = q3_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "none")
+
+# Finding: i) Again, Lambda values of 0.01 and 0.1 yield very good results for all epoch sizes considered. Specifically a lambda value at 0.01 or 0.1 and 30 epochs.
+# Conclusion: Consider using lambda value range between 0.01 or 0.1 at 30 epochs.
+
+# hidden units
+runs_2_plot  %>% 
+  ggplot(aes(x = flag_dense_units, y = metric_val_acc, fill = flag_dense_units)) +
+  geom_boxplot() +
+  labs(title = "Grid of different L2 regularization factors", x = "Hidden layer units", y = "Validation accuracy") +
+  facet_wrap(flag_lambda~.) +
+  scale_fill_brewer(palette = "Set3") +
+  #stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) +
+  #stat_summary(fun = q1_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") +
+  #stat_summary(fun = q3_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "none")
+
+# Finding: i) Again, Lambda values of 0.01 and 0.1 yield very good results for all hidden layer units.Specifically, 32 hidden layer units seem to perform very well at lamda 0.01 and 64 hidden layer units seem to perform very well with lambda value of 0.1.
+# Conclusion: Consider using lambda value range between 0.1 with 64 hidden layer units or lambda value of 0.01 with 32 hidden units.
+
+# 2.1.2 Bar charts
+
+# extracting 90th percentile for validation accuracy
+
+perc_90th <- quantile(runs_2$metric_val_acc, probs = 0.9)
+
+runs_2_plot <- runs_2 %>% 
+  filter(metric_val_acc > perc_90th)
+
+# lambda values 
+exp_2_bar_lambda <-  runs_2_plot %>% 
+  group_by(flag_lambda) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_lambda,-count), y = count, fill = as.factor(flag_lambda))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = -0.4) + 
+  labs(x = "Lambda", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+# hidden layer units
+exp_2_bar_dense_units <-  runs_2_plot %>% 
+  group_by(flag_dense_units) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_dense_units,-count), y = count, fill = as.factor(flag_dense_units))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = -0.4) + 
+  labs(x = "Hidden layer units", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# batch size
+exp_2_bar_batch_size <- runs_2_plot %>% 
+  group_by(flag_batch_size) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_batch_size,-count), y = count, fill = as.factor(flag_batch_size))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = -0.4) + 
+  labs(x = "Batch size", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# epochs
+exp_2_bar_epochs <- runs_2_plot %>% 
+  group_by(flag_epochs) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_epochs,-count), y = count, fill = as.factor(flag_epochs))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = -0.4) + 
+  labs(x = "Epochs", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# defining grid containing all bar plots
+grid.arrange(arrangeGrob(exp_2_bar_lambda, 
+                         exp_2_bar_dense_units, 
+                         exp_2_bar_batch_size,
+                         exp_2_bar_epochs,
+                         nrow = 2,
+                         left = textGrob(paste0("Count of validation accuracy above ", perc_90th, " (90th percentile)"), rot = 90))
+)
+
+# 3. Defining third experiment:
+
+# Note: Very similar to the second experiment only dropout will be used now
+
+epochs_vec <- round(seq(16, 30, length.out = 3),0)
+batch_size_vec <- c(80, 90, 100)
+dense_units_vec <- c(8,16,32,64,128)
+dropout_vec <- c(0.5, 0.6, 0.7, 0.8, 0.9)
+
+start <- Sys.time()
+runs_3 <- tuning_run("experiment_3.R",
+                   flags = list(batch_size = batch_size_vec,
+                                epochs = epochs_vec,
+                                dense_units = dense_units_vec,
+                                dropout = dropout_vec)) 
+
+end <- Sys.time()
+
+# Note: Took 4.4 hours to run
+
+# 3.1 Exploring results for experiment via visualizations
+
+# Note: dropout did not perform as well as L2 regularisation. Lets look at some of the distributions
+
+runs_2 <- ls_runs(runs_dir = "experiment_2_runs")
+runs_3 <-  ls_runs(runs_dir = "experiment_3_runs") 
+
+plot_3_df <- data.frame(val_acc = c(runs_2$metric_val_acc, runs_3$metric_val_acc),
+                        experiment_name = c(rep("L2 regularization", nrow(runs_2)), rep("Dropout regularization",nrow(runs_3))))
+
+# Density plot
+exp_3_density <- plot_3_df %>% 
+ggplot(aes(x = val_acc, fill = experiment_name)) + 
+  geom_density(alpha=.3) +
+  labs(y = "Density", x = "Validation accuracy") +
+  theme_bw() + 
+  scale_fill_brewer(palette = "Dark2") + 
+  theme(legend.title = element_blank())
+
+# box-plot
+
+exp_3_box <- plot_3_df %>% 
+ggplot(aes(x = val_acc, fill = experiment_name)) + 
+  geom_boxplot() +
+  labs(y = "Regularization mechanism", x = "Validation accuracy") +
+  scale_fill_brewer(palette = "Dark2") + 
+  theme_bw() + 
+  theme(legend.title = element_blank())
+
+grid.arrange(arrangeGrob(exp_3_density, exp_3_box, nrow = 2, ncol = 1))
+
+
+# 4. Defining fourth experiment:
+
+# Note: Checking which training optimisers deliver best results
+
+epochs_vec <- c(23)
+batch_size_vec <- c(100)
+dense_units_vec <- c(32,64)
+lambda_vec <- c(0.01, 0.1)
+optimizer_vec <- c('adam','sgd', 'rmsprop', 'adagrad', 'adadelta', 'adamax', 'nadam')
+
+start <- Sys.time()
+runs_4 <- tuning_run("experiment_4.R",
+                   flags = list(batch_size = batch_size_vec,
+                                epochs = epochs_vec,
+                                dense_units = dense_units_vec,
+                                lambda = lambda_vec,
+                                optimizer = optimizer_vec)) 
+
+end <- Sys.time()
+
+# Note: Took 22.5 mins to run
+
+# 4.1 Exploring results for experiment via visualizations
+
+# 4.1.1 box plots 
+
+runs_4_plot <- runs_4
+
+
+runs_4_plot  %>% 
+  ggplot(aes(x = flag_optimizer , y = metric_val_acc , fill = as.factor(flag_optimizer))) +
+  geom_boxplot() +
+  labs(x = "Training optimizer", y = "Validation accuracy") +
+  scale_fill_brewer(palette = "Dark2")  +
+  theme_bw() + 
+  theme(legend.position = "none")
+
+
+# Finding: Adam, adamax, nadam. rmsprop, and sgd dilivered good results. Specifically Adam and rmsprop performed very well.
+# Conclusion: Use either adam or rmsprop
+
+
+# 5. Defining firth experiment:
+
+epochs_vec <- c(23)
+batch_size_vec <- c(100)
+dense_units_vec <- c(32,64)
+lambda_vec <- c(0.01, 0.1)
+learning_rate_vec <- c(0.001, 0.01, 0.1, 0.2, 0.3)
+
+start <- Sys.time()
+runs_5 <- tuning_run("experiment_5.R",
+                   flags = list(batch_size = batch_size_vec,
+                                epochs = epochs_vec,
+                                dense_units = dense_units_vec,
+                                lambda = lambda_vec,
+                                learning_rate = learning_rate_vec)) 
+
+end <- Sys.time()
+
+# 5.1 Exploring results for experiment via visualizations
+
+# 5.1.1 box plots 
+
+runs_5 <- ls_runs(runs_dir = "experiment_5_runs")
+
+runs_5_plot <- runs_5
+
+exp_5_density <- runs_5_plot %>% 
+ggplot(aes(x = metric_val_acc , fill = as.factor(flag_learning_rate))) + 
+  geom_density(alpha=.3) +
+  labs(y = "Density", x = "Validation accuracy") +
+  theme_bw() + 
+  scale_fill_brewer(palette = "Dark2") + 
+  theme(legend.title = element_blank())
+
+
+exp_5_box <- runs_5_plot  %>% 
+  ggplot(aes(y = as.factor(flag_learning_rate), x = metric_val_acc , fill = as.factor(flag_learning_rate))) +
+  geom_boxplot() +
+  labs(y = "Learning rate", x = "Validation accuracy") +
+  scale_fill_brewer(palette = "Dark2")  +
+  theme_bw() + 
+  theme(legend.title = element_blank())
+
+grid.arrange(arrangeGrob(exp_5_density, exp_5_box, nrow = 2, ncol = 1))
+
+# Note: 
+
+```
+
+5.2.3 Model construction and testing
+
+```{r, Model construction and testing - Neural network models - modelling }
+
+# 1. Defining network data's models
+
+# Note: From the hyper-parameter tuning two models are goin to be trained and tested 
+
+# 1.1 Model 1 
+
+# define model
+model_1_network <- keras_model_sequential()
+
+model_1_network %>% 
+  layer_dense(units = 32, 
+              activation = 'relu', 
+              input_shape = c(27),
+              kernel_regularizer = regularizer_l2(l = 0.01)) %>%
+  layer_dense(units = 2, activation = 'softmax')
+
+# Compile model
+
+model_1_network %>% compile(loss = 'categorical_crossentropy',
+                  optimizer = 'adam',
+                  metrics = list('accuracy',metric_precision(), metric_recall(), metric_auc()))
+
+# Fit model
+
+history_1_network <- model_1_network %>% 
+  fit(train_network_features_nn,
+      train_target_nn,
+      epochs = 23,
+      batch_size = 100,
+      validation_split = 0.3)
+
+# Evaluate model's performance on Test data
+
+model_1_network %>% evaluate(test_network_features_nn, test_target_nn)
+  
+# display confusion matrix
+Y_test_hat_network_1 <- predict_classes(model_1_network, test_network_features_nn)
+conf_mat_model_1_net <-  table(test_network_features$is_fraud, Y_test_hat_network_1)
+
+
+# 1.1 Model 2
+
+# define model
+model_2_network <- keras_model_sequential()
+
+model_2_network %>% 
+  layer_dense(units = 64, 
+              activation = 'relu', 
+              input_shape = c(27),
+              kernel_regularizer = regularizer_l2(l = 0.01)) %>%
+  layer_dense(units = 2, activation = 'softmax')
+
+# Compile model
+
+model_2_network %>% compile(loss = 'categorical_crossentropy',
+                  optimizer = 'adam',
+                  metrics = list('accuracy',metric_precision(), metric_recall(), metric_auc()))
+
+# Fit model
+
+history_2_network <- model_2_network %>% 
+  fit(train_network_features_nn,
+      train_target_nn,
+      epochs = 23,
+      batch_size = 100,
+      validation_split = 0.3)
+
+# Evaluate model's performance on Test data
+
+model_2_network %>% evaluate(test_network_features_nn, test_target_nn)
+  
+# display confusion matrix
+Y_test_hat_network_2 <- predict_classes(model_2_network, test_network_features_nn)
+conf_mat_model_2_net <-  table(test_network_features$is_fraud, Y_test_hat_network_2)
 
 
 ```
 
+
+
 ### DEMO CODE ###
 
-Tests code
 
+Test code
 ```{r, test code}
+
+#### transactional feature function additions #####
+
+transaction_df <- training_transactions_final
+
+
+# 3. Generating time period stats for accounts
+  
+  # 3.1 payment made (from)
+  
+  # all accounts that made a payment
+  payment_IDs <- unique(transaction_df$from)
+  
+  # data frame that stores the results
+  payment_period_stats_df <- data.frame(client_ID = payment_IDs,
+                                        payment_period_max = rep(NA, length(payment_IDs)),
+                                        payment_period_min = rep(NA, length(payment_IDs)),
+                                        payment_period_avg = rep(NA, length(payment_IDs)),
+                                        payment_period_std = rep(NA, length(payment_IDs)))
+  
+  for (i in 1:length(payment_IDs)) {
+    
+    # filtering a specific account that made payment(s)
+    current_df <- transaction_df %>% 
+      filter(from == payment_IDs[i]) %>% 
+      arrange(tran_timestamp)
+    
+    if(nrow(current_df) > 1){
+      
+      # creating vector that stores the time difference between payments made by account
+      current_days_difference <- rep(NA,nrow(current_df))
+      
+      for (j in 2:nrow(current_df)) {
+        
+        current_days_difference[j] <- difftime(current_df$tran_timestamp[j],current_df$tran_timestamp[j-1], units = "days")
+        
+      }
+      
+      # saving stats variables to created data frame
+      payment_period_stats_df$payment_period_max[i] <- max(current_days_difference, na.rm =T)
+      payment_period_stats_df$payment_period_min[i] <- min(current_days_difference, na.rm =T) 
+      payment_period_stats_df$payment_period_avg[i] <- mean(current_days_difference, na.rm =T) 
+      payment_period_stats_df$payment_period_std[i] <- sd(current_days_difference, na.rm =T) 
+      
+    }else{
+      
+      # saving stats variables to created data frame
+      payment_period_stats_df$payment_period_max[i] <- 1
+      payment_period_stats_df$payment_period_min[i] <- 1 
+      payment_period_stats_df$payment_period_avg[i] <- 1 
+      payment_period_stats_df$payment_period_std[i] <- 0 
+      
+    }
+    
+  }
+  
+  # 3.2 payment received (to)
+  
+  # all accounts that received a payment
+  payment_IDs <- unique(transaction_df$to)
+  
+  # data frame that stores the results
+  receive_period_stats_df <- data.frame(client_ID = payment_IDs,
+                                        receive_period_max = rep(NA, length(payment_IDs)),
+                                        receive_period_min = rep(NA, length(payment_IDs)),
+                                        receive_period_avg = rep(NA, length(payment_IDs)),
+                                        receive_period_std = rep(NA, length(payment_IDs)))
+  
+  
+  for (i in 1:length(payment_IDs)) {
+    
+    # filtering a specific account that made payment(s)
+    current_df <- transaction_df %>% 
+      filter(to == payment_IDs[i]) %>% 
+      arrange(tran_timestamp)
+    
+    if(nrow(current_df) > 1){
+      
+      # creating vector that stores the time difference between payments made by account
+      current_days_difference <- rep(NA, nrow(current_df))
+      
+      for (j in 2:nrow(current_df)) {
+        
+        current_days_difference[j] <- difftime(current_df$tran_timestamp[j],current_df$tran_timestamp[j-1], units = "days")
+        
+      }
+      
+      # saving stats variables to created data frame
+      receive_period_stats_df$receive_period_max[i] <- max(current_days_difference, na.rm =T)
+      receive_period_stats_df$receive_period_min[i] <- min(current_days_difference, na.rm =T) 
+      receive_period_stats_df$receive_period_avg[i] <- mean(current_days_difference, na.rm =T) 
+      receive_period_stats_df$receive_period_std[i] <- sd(current_days_difference, na.rm =T) 
+      
+    }else{
+      
+      # saving stats variables to created data frame
+      receive_period_stats_df$receive_period_max[i] <- 1
+      receive_period_stats_df$receive_period_min[i] <- 1 
+      receive_period_stats_df$receive_period_avg[i] <- 1 
+      receive_period_stats_df$receive_period_std[i] <- 0 
+      
+    }
+    
+  }
+
+
+
+
+
+
+#### transactional feature function additions #####
 
 #### EDA TEst training set
 train_all_features %>% 
@@ -2239,15 +2840,6 @@ train_all_features %>%
 test_all_features %>% 
   create_report(y = "is_fraud",
                 report_title = "EDA - testing data" )
-
-
-
-
-  
-  
-
-
-
 
 
 ####
@@ -2607,69 +3199,6 @@ split_point_df_filt <- split_point_df %>%
 
 
 which(split_point_df_filt$resulting_ratio == min(split_point_df_filt$resulting_ratio))
-
-###### 1. TEST TRAIN SPLIT ###### 
-
-
-
-#### Period stats (in funcrion) ####
-
-
-# 3. Generating time period stats for accounts
-  
-  # 3.1 payment made (to)
-  
-  # all accounts that made a payment
-  payment_IDs <- unique(transaction_df$from)
-  
-  # data frame that stores the results
-  payment_period_stats_df <- data.frame(client_ID = payment_IDs,
-                                        payment_period_max = rep(NA, length(payment_IDs)),
-                                        payment_period_min = rep(NA, length(payment_IDs)),
-                                        payment_period_avg = rep(NA, length(payment_IDs)),
-                                        payment_period_std = rep(NA, length(payment_IDs)))
-  
-  
-  for (i in 1:length(payment_IDs)) {
-    
-    # filtering a specific account that made payment(s)
-    current_df <- transaction_df %>% 
-      filter(from == payment_IDs[i]) %>% 
-      arrange(tran_timestamp)
-    
-    if(nrow(current_df) > 1){
-      
-      # creating vector that stores the time difference between payments made by account
-      current_days_difference <- rep(NA,nrow(current_df))
-      
-      for (j in 2:nrow(test_df)) {
-        
-        current_days_difference[j] <- difftime(current_df$tran_timestamp[j],current_df$tran_timestamp[j-1], units = "days")
-        
-      }
-      
-      # saving stats variables to created data frame
-      payment_period_stats_df$payment_period_max[i] <- max(current_days_difference, na.rm =T)
-      payment_period_stats_df$payment_period_min[i] <- min(current_days_difference, na.rm =T) 
-      payment_period_stats_df$payment_period_avg[i] <- mean(current_days_difference, na.rm =T) 
-      payment_period_stats_df$payment_period_std[i] <- sd(current_days_difference, na.rm =T) 
-      
-    }else{
-      
-      # saving stats variables to created data frame
-      payment_period_stats_df$payment_period_max[i] <- 1
-      payment_period_stats_df$payment_period_min[i] <- 1 
-      payment_period_stats_df$payment_period_avg[i] <- 1 
-      payment_period_stats_df$payment_period_std[i] <- 0 
-      
-      
-      
-      
-    }
-    
-    
-  }
-
 
 ```
 
