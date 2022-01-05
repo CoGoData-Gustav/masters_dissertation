@@ -1,21 +1,18 @@
-######## Experiment 2 ########
+######## Neural network 1 (NN_1) ########
 
-# Description/Goal of experiment: To investigate what the effect would be if L2 regularization is applied.
+# Description/Goal of experiment: Finding the right regularisation  
 
 # 1. Defining Flags we are going to use
 
-FLAGS <- flags(flag_integer('dense_units', 64),
-               flag_integer('batch_size', 5),
-               flag_integer('epochs', 67),
-               flag_numeric("lambda", 0.001)
+FLAGS <- flags(flag_numeric("lambda", exp(-7))
 )
 
 # 2. Defining Model for experiment
 
 model <- keras_model_sequential() %>%
-  layer_dense(units = FLAGS$dense_units, 
+  layer_dense(units = 8, 
               activation = 'relu', 
-              input_shape = c(21),
+              input_shape = c(48),
               kernel_regularizer = regularizer_l2(l = FLAGS$lambda)) %>%
   layer_dense(units = 2, activation = 'softmax')
 
@@ -28,8 +25,8 @@ model %>% compile(loss = 'categorical_crossentropy',
 # 4. Fit model
 
 history <- model %>% 
-  fit(train_transactional_features_nn,
+  fit(train_all_features_nn,
       train_target_nn,
-      epochs = FLAGS$epochs,
-      batch_size = FLAGS$batch_size,
+      epochs = 20,
+      batch_size = 100,
       validation_split = 0.3)

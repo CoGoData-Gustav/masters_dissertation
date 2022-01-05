@@ -1555,11 +1555,13 @@ iii) Using network and transactional features (combined feature data set).
 
 # 5.1 Logistic regression models 
 
-```{r, logistic regression models - modelling}
+# 5.1.1 Data pre-processing
+
+```{r, data pre-processing - logistic regression models - modelling}
 
 # 1. Data-pre processing for LR model
 
-# transforming response to factor variable
+# 1.1 transforming response to factor variable
 train_network_features$is_fraud <- as.factor(train_network_features$is_fraud)
 train_transactional_features$is_fraud <- as.factor(train_transactional_features$is_fraud)
 train_all_features$is_fraud <- as.factor(train_all_features$is_fraud)
@@ -1568,57 +1570,85 @@ test_network_features$is_fraud <- as.factor(test_network_features$is_fraud)
 test_transactional_features$is_fraud <- as.factor(test_transactional_features$is_fraud)
 test_all_features$is_fraud <- as.factor(test_all_features$is_fraud)
 
-# omitting all columns that have NA values
+# 1.2 omitting all columns that have NA values
 train_transactional_features <- train_transactional_features[, colSums(is.na(train_transactional_features)) == 0]
 train_all_features <- train_all_features[, colSums(is.na(train_all_features)) == 0]
 
 test_transactional_features <- test_transactional_features[, colSums(is.na(test_transactional_features)) == 0]
 test_all_features <- test_all_features[, colSums(is.na(test_all_features)) == 0]
 
-# 2. Constructing standard logistic regression models
+# 1.3 scaling features
+train_network_features[,2:28] <- scale(train_network_features[,2:28])
+train_transactional_features[,2:22] <- scale(train_transactional_features[,2:22])
+train_all_features[,2:49] <- scale(train_all_features[,2:49])
+
+test_network_features[,2:28] <- scale(test_network_features[,2:28])
+test_transactional_features[,2:22] <- scale(test_transactional_features[,2:22])
+test_all_features[,2:49] <- scale(test_all_features[,2:49])
+
+# 1.4 dropping client_ID column
+train_network_features <- train_network_features[,-1]
+train_transactional_features <- train_transactional_features[,-1]
+train_all_features <- train_all_features[,-1]
+
+test_network_features <- test_network_features[,-1]
+test_transactional_features <- test_transactional_features[,-1]
+test_all_features <- test_all_features[,-1]
+
+
+```
+
+
+# 5.1.2 Hyper-parameter tuning 
+
+```{r, hyper-parameter tuning - logistic regression models - modelling}
+
+# 1. Constructing standard logistic regression models
 
 # network features LR model
-log_std_model_network <- glm(is_fraud ~ . , data = train_network_features[,-1], family = "binomial")
+log_std_model_network <- glm(is_fraud ~ . , data = train_network_features, family = "binomial")
 summary(log_std_model_network)
 round(exp(coef(log_std_model_network)),3)
 
 # transactional features LR model
-log_std_model_trans <- glm(is_fraud ~ . , data = train_transactional_features[,-1], family = "binomial")
+log_std_model_trans <- glm(is_fraud ~ . , data = train_transactional_features, family = "binomial")
 summary(log_std_model_trans)
 round(exp(coef(log_std_model_trans)),3)
 
 # all features LR model
-log_std_model_all <- glm(is_fraud ~ . , data = train_all_features[,-1], family = "binomial")
+log_std_model_all <- glm(is_fraud ~ . , data = train_all_features, family = "binomial")
 summary(log_std_model_all)
 round(exp(coef(log_std_model_all)),3)
 
-# 3. Constructing logistic regression with LASSO penalty
+# 2. Constructing logistic regression with LASSO penalty
 
 # network features
-log_LASSO_model_network <- glmnet(x = as.matrix(train_network_features[,-c(1,ncol(train_network_features))]),
+log_LASSO_model_network <- glmnet(x = as.matrix(train_network_features[,-c(ncol(train_network_features))]),
                                                 y = train_network_features$is_fraud , 
                                                 alpha = 1, 
-                                                standardize = TRUE, 
+                                                standardize = FALSE, 
                                                 family = 'binomial')
 
-plot(log_LASSO_model_network, xvar = 'lambda', label=TRUE)
+plot(log_LASSO_model_network, xvar = 'lambda', label=TRUE)1
 
-# transactional features
 
-log_LASSO_model_trans <- glmnet(x = as.matrix(train_transactional_features[,-c(1,ncol(train_transactional_features))]),
+# transaction features
+
+log_LASSO_model_trans <- glmnet(x = as.matrix(train_transactional_features[,-c(ncol(train_transactional_features))]),
                                                 y = train_transactional_features$is_fraud, 
                                                 alpha = 1, 
-                                                standardize = TRUE, 
+                                                standardize = FALSE, 
                                                 family = 'binomial')
 
 plot(log_LASSO_model_trans, xvar = 'lambda', label=TRUE)
+
 
 # all features
 
 log_LASSO_model_all <- glmnet(x = as.matrix(train_all_features[,-c(1,ncol(train_all_features))]),
                                                 y = train_all_features$is_fraud, 
                                                 alpha = 1, 
-                                                standardize = TRUE, 
+                                                standardize = FALSE, 
                                                 family = 'binomial')
 
 plot(log_LASSO_model_all, xvar = 'lambda', label=TRUE)
@@ -1628,37 +1658,39 @@ plot(log_LASSO_model_all, xvar = 'lambda', label=TRUE)
 # 3.1 Applying 10-fold CV to determine optimal lambda value
 
 # network features
-log_cv_model_network <- cv.glmnet(x = as.matrix(train_network_features[,-c(1,ncol(train_network_features))]),
+log_cv_model_network <- cv.glmnet(x = as.matrix(train_network_features[,-c(ncol(train_network_features))]),
                                y = train_network_features$is_fraud,
                                alpha = 1, # LASSO
                                nfolds = 10,
                                type.measure = "mse",
                                family = "binomial",
-                               standardize = T)
+                               standardize = F)
 
 plot(log_cv_model_network)
 log_cv_model_network$lambda.1se
 
+test <- log_cv_model_network$lambda
+
 # transactional features
-log_cv_model_trans <- cv.glmnet(x = as.matrix(train_transactional_features[,-c(1,ncol(train_transactional_features))]),
+log_cv_model_trans <- cv.glmnet(x = as.matrix(train_transactional_features[,-c(ncol(train_transactional_features))]),
                                y = train_transactional_features$is_fraud,
                                alpha = 1, # LASSO
                                nfolds = 10,
                                type.measure = "mse",
                                family = "binomial",
-                               standardize = T)
+                               standardize = F)
 
 plot(log_cv_model_trans)
 log_cv_model_trans$lambda.1se
 
 # all features
-log_cv_model_all <- cv.glmnet(x = as.matrix(train_all_features[,-c(1,ncol(train_all_features))]),
+log_cv_model_all <- cv.glmnet(x = as.matrix(train_all_features[,-c(ncol(train_all_features))]),
                                y = train_all_features$is_fraud,
                                alpha = 1, # LASSO
                                nfolds = 10,
                                type.measure = "mse",
                                family = "binomial",
-                               standardize = T)
+                               standardize = F)
 
 plot(log_cv_model_all)
 log_cv_model_all$lambda.1se
@@ -1673,7 +1705,7 @@ pi_hat_log_std_network <- predict(log_std_model_network, type = "response")
 
 # LASSO LR model
 pi_hat_log_lasso_network <- predict(log_cv_model_network, 
-                                    newx = as.matrix(train_network_features[,-c(1,ncol(train_network_features))]),
+                                    newx = as.matrix(train_network_features[,-c(ncol(train_network_features))]),
                                     s = log_cv_model_network$lambda.1se,
                                     type = "response")
 
@@ -1685,7 +1717,7 @@ pi_hat_log_std_trans <- predict(log_std_model_trans, type = "response")
 
 # LASSO LR model
 pi_hat_log_lasso_trans <- predict(log_cv_model_trans, 
-                                    newx = as.matrix(train_transactional_features[,-c(1,ncol(train_transactional_features))]),
+                                    newx = as.matrix(train_transactional_features[,-c(ncol(train_transactional_features))]),
                                     s = log_cv_model_trans$lambda.1se,
                                     type = "response")
 
@@ -1695,12 +1727,12 @@ pi_hat_log_std_all <- predict(log_std_model_all, type = "response")
 
 # LASSO LR model
 pi_hat_log_lasso_all <- predict(log_cv_model_all, 
-                                    newx = as.matrix(train_all_features[,-c(1,ncol(train_all_features))]),
+                                    newx = as.matrix(train_all_features[,-c(ncol(train_all_features))]),
                                     s = log_cv_model_all$lambda.1se,
                                     type = "response")
 
 
-# 5. Hyper- parameter tuning of threshold value
+# 5. Choosing threshold value
 
 # 5.1 Defining function that extract the optimal threshold value according to ROC and precision recall curves
 
@@ -1748,7 +1780,7 @@ optimal_threshold_ROC <- function(model_performance){
 }
 
 
-# 5.1.1 ROC  
+# 5.1.2 Precision-recall  
 optimal_threshold_PR <- function(model_performance){
   
   
@@ -1773,8 +1805,8 @@ optimal_threshold_PR <- function(model_performance){
   plot.new()
   
   PR_threshold_res <- list(optimal_threshold = optimal_threshold,
-                           recall = model_performance@y.values[[1]][max_gmean_ind],
-                           precision = model_performance@x.values[[1]][max_gmean_ind],
+                           recall = model_performance@y.values[[1]][max_f_ind],
+                           precision = model_performance@x.values[[1]][max_f_ind],
                            max_f_measure = max(f_measure, na.rm = T),
                            PR_plot = PR_plot)
   
@@ -1835,7 +1867,7 @@ threshold_std_all <- optimal_threshold_ROC(perf_std_all)
 threshold_lasso_all <- optimal_threshold_ROC(perf_lasso_all)
 
 
-# 5.3 Calculating performance of each model based on precision-recall curves and detetrmnig optimal threshold value
+# 5.3 Calculating performance of each model based on precision-recall curves and determining optimal threshold value
 
 # Note: Unlike the ROC Curve, a precision-recall curve focuses on the performance of a classifier on the positive (minority class) only.
 
@@ -1865,7 +1897,7 @@ perf_std_all_pr <- performance(pred_std_all, "prec", "rec")
 perf_lasso_all_pr <- performance(pred_lasso_all, "prec", "rec")
 
 
-# Calculating optimal threshold values according to ROC curves 
+# Calculating optimal threshold values according to PR curves 
 
 #  Network features
 threshold_std_network_pr <- optimal_threshold_PR(perf_std_network_pr)
@@ -1981,32 +2013,32 @@ ggplot(aes(x = reorder(log_model, -class_accur), y = class_accur, group = 1, col
 # 7.1.1 Network features
 
 # Regular LR model
-pi_hat_log_std_network_test <- predict(log_std_model_network, newdata = test_network_features[,-1], type = "response")
+pi_hat_log_std_network_test <- predict(log_std_model_network, newdata = test_network_features, type = "response")
 
 # LASSO LR model
 pi_hat_log_lasso_network_test <- predict(log_cv_model_network, 
-                                    newx = as.matrix(test_network_features[,-c(1,ncol(test_network_features))]),
+                                    newx = as.matrix(test_network_features[,-c(ncol(test_network_features))]),
                                     s = log_cv_model_network$lambda.1se,
                                     type = "response")
 
 # 7.1.2 Transactions features
 
 # Regular LR model
-pi_hat_log_std_trans_test <- predict(log_std_model_trans, newdata = test_transactional_features[,-1], type = "response")
+pi_hat_log_std_trans_test <- predict(log_std_model_trans, newdata = test_transactional_features, type = "response")
 
 # LASSO LR model
 pi_hat_log_lasso_trans_test <- predict(log_cv_model_trans, 
-                                    newx = as.matrix(test_transactional_features[,-c(1,ncol(test_transactional_features))]),
+                                    newx = as.matrix(test_transactional_features[,-c(ncol(test_transactional_features))]),
                                     s = log_cv_model_trans$lambda.1se,
                                     type = "response")
 
 
 # 7.1.3 all features
-pi_hat_log_std_all_test <- predict(log_std_model_all, newdata = test_all_features[,-1] , type = "response")
+pi_hat_log_std_all_test <- predict(log_std_model_all, newdata = test_all_features, type = "response")
 
 # LASSO LR model
 pi_hat_log_lasso_all_test <- predict(log_cv_model_all, 
-                                    newx = as.matrix(test_all_features[,-c(1,ncol(test_all_features))]),
+                                    newx = as.matrix(test_all_features[,-c(ncol(test_all_features))]),
                                     s = log_cv_model_all$lambda.1se,
                                     type = "response")
 
@@ -2162,6 +2194,8 @@ test_all_features_nn <- test_all_features %>%
 
 5.2.2 Hyper-parameter tuning
 
+[old approach] 
+
 ```{r, hyper-parameter tuning -  neural network models - modelling}
 
 # Note: This code chunk will be reused for all three data sets that need to be evaluated. Only the inputs to the "experiment.R" will change slighly.
@@ -2174,7 +2208,7 @@ test_all_features_nn <- test_all_features %>%
 # ii) Batch size
 # iii) 1st layer hidden units
 
-epochs_vec <- round(seq(from = 5, to = 75, length.out = 10), 0)
+epochs_vec <- round(seq(from = 5, to = 100, length.out = 10), 0)
 batch_size_vec <- seq(from = 10, to = 100, length.out = 10 )
 dense_units_vec <- c(8,16,32,64,128)
 
@@ -2492,9 +2526,9 @@ grid.arrange(arrangeGrob(exp_2_bar_lambda,
 
 # Note: Very similar to the second experiment only dropout will be used now
 
-epochs_vec <- round(seq(16, 30, length.out = 3),0)
-batch_size_vec <- c(80, 90, 100)
-dense_units_vec <- c(8,16,32,64,128)
+epochs_vec <- round(seq(67, 100, length.out = 3),0)
+batch_size_vec <- c(5, 10, 15)
+dense_units_vec <- c(64, 128)
 dropout_vec <- c(0.5, 0.6, 0.7, 0.8, 0.9)
 
 start <- Sys.time()
@@ -2510,10 +2544,10 @@ end <- Sys.time()
 
 # 3.1 Exploring results for experiment via visualizations
 
-# Note: dropout did not perform as well as L2 regularisation. Lets look at some of the distributions
+# 3.1.1 Comparing regularization mechanisms
 
-runs_2 <- ls_runs(runs_dir = "experiment_2_runs")
-runs_3 <-  ls_runs(runs_dir = "experiment_3_runs") 
+runs_2 <- ls_runs(runs_dir = "exp_2_runs")
+runs_3 <-  ls_runs() 
 
 plot_3_df <- data.frame(val_acc = c(runs_2$metric_val_acc, runs_3$metric_val_acc),
                         experiment_name = c(rep("L2 regularization", nrow(runs_2)), rep("Dropout regularization",nrow(runs_3))))
@@ -2540,14 +2574,143 @@ ggplot(aes(x = val_acc, fill = experiment_name)) +
 grid.arrange(arrangeGrob(exp_3_density, exp_3_box, nrow = 2, ncol = 1))
 
 
+#### If dropout yields better results than L2 then also plot these curves ####
+
+# 3.1.2 box plots
+
+runs_3_plot <- runs_3
+
+runs_3_plot$flag_dense_units <- as.factor(runs_3_plot$flag_dense_units)
+runs_3_plot$flag_batch_size <- as.factor(runs_3_plot$flag_batch_size)
+runs_3_plot$flag_epochs <- as.factor(runs_3_plot$flag_epochs)
+runs_3_plot$flag_dropout <- as.factor(runs_3_plot$flag_dropout)
+
+# batch size
+
+runs_3_plot  %>% 
+  ggplot(aes(x = flag_batch_size, y = metric_val_acc, fill = flag_batch_size)) +
+  geom_boxplot() +
+  labs(title = "Grid of different dropout rates", x = "Batch size", y = "Validation accuracy") +
+  scale_fill_brewer(palette = "Paired") +
+  facet_wrap(flag_dropout~.) +
+  stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) + 
+  stat_summary(fun = q1_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") +
+  stat_summary(fun = q3_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "none")
+
+# Finding: i) Lambda values of 0.01 and 0.1 yield very good results for all batch sizes considered (small std and high medians). Specifically a batch size of 100 and lambda value of 0.01.
+# Conclusion: Consider using lambda value of 0.01 and batch size of 100.
+
+
+# epochs
+runs_3_plot  %>% 
+  ggplot(aes(x = flag_epochs, y = metric_val_acc, fill = flag_epochs)) +
+  geom_boxplot() +
+  labs(title = "Grid of different dropout rates", x = "Epochs", y = "Validation accuracy") +
+  facet_wrap(flag_dropout~.) +
+  scale_fill_brewer(palette = "Set3") +
+  stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) +
+  stat_summary(fun = q1_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") +
+  stat_summary(fun = q3_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "none")
+
+# Finding: i) Again, Lambda values of 0.01 and 0.1 yield very good results for all epoch sizes considered. Specifically a lambda value at 0.01 or 0.1 and 30 epochs.
+# Conclusion: Consider using lambda value range between 0.01 or 0.1 at 30 epochs.
+
+# hidden units
+runs_3_plot  %>% 
+  ggplot(aes(x = flag_dense_units, y = metric_val_acc, fill = flag_dense_units)) +
+  geom_boxplot() +
+  labs(title = "Grid of different dropout rates", x = "Hidden layer units", y = "Validation accuracy") +
+  facet_wrap(flag_dropout~.) +
+  scale_fill_brewer(palette = "Set3") +
+  #stat_summary(fun = median, geom = "line", aes(group = 1), col = "red", size = 1) +
+  #stat_summary(fun = q1_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") +
+  #stat_summary(fun = q3_func, geom = "line", aes(group = 1), col = "red", size = 0.85, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "none")
+
+# Finding: i) Again, Lambda values of 0.01 and 0.1 yield very good results for all hidden layer units.Specifically, 32 hidden layer units seem to perform very well at lamda 0.01 and 64 hidden layer units seem to perform very well with lambda value of 0.1.
+# Conclusion: Consider using lambda value range between 0.1 with 64 hidden layer units or lambda value of 0.01 with 32 hidden units.
+
+#3.1.3 Bar charts
+
+# extracting 90th percentile for validation accuracy
+
+perc_90th <- quantile(runs_3$metric_val_acc, probs = 0.9)
+
+runs_3_plot <- runs_3 %>% 
+  filter(metric_val_acc > perc_90th)
+
+# lambda values 
+exp_3_bar_dropout <-  runs_3_plot %>% 
+  group_by(flag_dropout) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_dropout,-count), y = count, fill = as.factor(flag_dropout))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = -0.4) + 
+  labs(x = "Dropout rate", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+# hidden layer units
+exp_3_bar_dense_units <-  runs_3_plot %>% 
+  group_by(flag_dense_units) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_dense_units,-count), y = count, fill = as.factor(flag_dense_units))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = -0.4) + 
+  labs(x = "Hidden layer units", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# batch size
+exp_3_bar_batch_size <- runs_3_plot %>% 
+  group_by(flag_batch_size) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_batch_size,-count), y = count, fill = as.factor(flag_batch_size))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = -0.4) + 
+  labs(x = "Batch size", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# epochs
+exp_3_bar_epochs <- runs_3_plot %>% 
+  group_by(flag_epochs) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = reorder(flag_epochs,-count), y = count, fill = as.factor(flag_epochs))) +
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = -0.4) + 
+  labs(x = "Epochs", y = " ") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# defining grid containing all bar plots
+grid.arrange(arrangeGrob(exp_3_bar_dropout, 
+                         exp_3_bar_dense_units, 
+                         exp_3_bar_batch_size,
+                         exp_3_bar_epochs,
+                         nrow = 2,
+                         left = textGrob(paste0("Count of validation accuracy above ", perc_90th, " (90th percentile)"), rot = 90))
+)
+
+
 # 4. Defining fourth experiment:
 
 # Note: Checking which training optimisers deliver best results
 
-epochs_vec <- c(23)
-batch_size_vec <- c(100)
-dense_units_vec <- c(32,64)
-lambda_vec <- c(0.01, 0.1)
+epochs_vec <- c(100)
+batch_size_vec <- c(10, 15)
+dense_units_vec <- c(128)
+dropout_vec <- c(0.6, 0.5)
 optimizer_vec <- c('adam','sgd', 'rmsprop', 'adagrad', 'adadelta', 'adamax', 'nadam')
 
 start <- Sys.time()
@@ -2555,7 +2718,7 @@ runs_4 <- tuning_run("experiment_4.R",
                    flags = list(batch_size = batch_size_vec,
                                 epochs = epochs_vec,
                                 dense_units = dense_units_vec,
-                                lambda = lambda_vec,
+                                dropout = dropout_vec,
                                 optimizer = optimizer_vec)) 
 
 end <- Sys.time()
@@ -2569,25 +2732,35 @@ end <- Sys.time()
 runs_4_plot <- runs_4
 
 
-runs_4_plot  %>% 
-  ggplot(aes(x = flag_optimizer , y = metric_val_acc , fill = as.factor(flag_optimizer))) +
+exp_4_density <- runs_4_plot %>% 
+ggplot(aes(x = metric_val_acc, fill = flag_optimizer)) + 
+  geom_density(alpha=.3) +
+  labs(y = "Density", x = "Validation accuracy") +
+  theme_bw() + 
+  scale_fill_brewer(palette = "Dark2") + 
+  theme(legend.title = element_blank())
+
+exp_4_box <- runs_4_plot  %>% 
+  ggplot(aes(x = metric_val_acc , fill = as.factor(flag_optimizer))) +
   geom_boxplot() +
   labs(x = "Training optimizer", y = "Validation accuracy") +
   scale_fill_brewer(palette = "Dark2")  +
   theme_bw() + 
-  theme(legend.position = "none")
+  theme(legend.title = element_blank()) 
+
+grid.arrange(arrangeGrob(exp_4_density, exp_4_box, nrow = 2, ncol = 1))
 
 
 # Finding: Adam, adamax, nadam. rmsprop, and sgd dilivered good results. Specifically Adam and rmsprop performed very well.
 # Conclusion: Use either adam or rmsprop
 
 
-# 5. Defining firth experiment:
+# 5. Defining fith experiment:
 
-epochs_vec <- c(23)
-batch_size_vec <- c(100)
-dense_units_vec <- c(32,64)
-lambda_vec <- c(0.01, 0.1)
+epochs_vec <- c(100)
+batch_size_vec <- c(10, 15)
+dense_units_vec <- c(128)
+dropout_vec <- c(0.6, 0.5)
 learning_rate_vec <- c(0.001, 0.01, 0.1, 0.2, 0.3)
 
 start <- Sys.time()
@@ -2595,7 +2768,7 @@ runs_5 <- tuning_run("experiment_5.R",
                    flags = list(batch_size = batch_size_vec,
                                 epochs = epochs_vec,
                                 dense_units = dense_units_vec,
-                                lambda = lambda_vec,
+                                dropout = dropout_vec,
                                 learning_rate = learning_rate_vec)) 
 
 end <- Sys.time()
@@ -2631,13 +2804,173 @@ grid.arrange(arrangeGrob(exp_5_density, exp_5_box, nrow = 2, ncol = 1))
 
 ```
 
+Validation curves generation
+
+Note: Our approach be to fix the architecture of the neural network model (having a certain complexity threshold) and to apply regularization as a mechanism to control the complexity (such that the model generalizes well).
+
+```{r, validation curves generation - Hyper-paramater tuning}
+
+# 1. Defining neural network models
+
+# 1.1 Neural network model 1 (simple model)
+
+# Hidden units: 8
+# Batch size: 100
+# Epochs: 23
+# Optimizer and learning rate: 0.001
+# Activation function (hidden layer): relu
+# Activation function (final layer): softmax
+# Loss function: categorical crossentropy 
+# L2 regularization
+
+lambda_vec <- exp(seq(-5.5,-2,length = 15)) # Notice the exp - efficient way to define a optimal set of values
+
+nn_1 <- tuning_run("NN_1.R",
+                   flags = list(lambda = lambda_vec)) 
+
+
+# 1.1.1 Plotting validation curve
+
+## NB! Plot below will only work afer you have defined best lambda value
+
+## High level lambda values plot
+
+nn_1_df <- data.frame(set = c(rep("Train", nrow(nn_1)), rep("Validation", nrow(nn_1))),
+                      error = c(nn_1$metric_loss, nn_1$metric_val_loss),
+                      lambda = c(nn_1$flag_lambda, nn_1$flag_lambda)
+                      ) 
+
+hl_nn_1 <- nn_1_df %>% 
+ggplot(aes(x = lambda, y = error, colour = set, fill = set)) +  
+  geom_point() + 
+  geom_line() +
+  labs(x= expression(lambda), y = "Error (categorical crossentropy)") + 
+  scale_color_manual(values=c("black", "blue")) + 
+  geom_vline(xintercept = min_lambda, linetype = "dashed", col = "red" ) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+## Focused lambda values plot
+
+min_lambda <- nn_1$flag_lambda[which(nn_1$metric_val_loss == min(nn_1$metric_val_loss))]
+
+nn_1_df <- data.frame(lambda = nn_1$flag_lambda,
+                   val_loss = nn_1$metric_val_loss,
+                   train_loss = nn_1$metric_loss)
+
+focus_nn_1 <- nn_1_df %>% 
+  ggplot(aes(x = lambda)) +  
+  geom_point(aes(y = val_loss, color = "Validation")) + 
+  geom_line(aes(y = val_loss, color = "Validation")) +
+  geom_point(aes(y = train_loss, color = "Train")) + 
+  geom_line(aes(y = train_loss, color = "Train")) + 
+  geom_smooth(aes(y = val_loss, color = "Validation smooth"), se =F) +
+  geom_smooth(aes(y = train_loss, color = "Train smooth"), se =F) + 
+  geom_vline(aes(xintercept = min_lambda), color = "red", linetype = "dashed"  ) + 
+  scale_color_manual(breaks = c("Validation", "Train", "Validation smooth", "Train smooth"),
+                     values = c("Validation" = "blue", "Train" = "black", "Validation smooth" = "lightblue" , "Train smooth" = "gray") ) +
+  geom_text(aes(x = min_lambda + 0.03, y = max(val_loss) , label = paste('lambda', '==', round(min_lambda, 4))), parse = T, col = "red") +
+  labs(x = expression(lambda), y = " ") + 
+  theme_bw() + 
+  theme(legend.title = element_blank())
+
+grid.arrange(arrangeGrob(hl_nn_1, focus_nn_1, nrow = 1, ncol = 2))
+
+# 1.2 Neural network model 2 (More complex model)
+
+# Hidden units: 32
+# Batch size: 100
+# Epochs: 23
+# Optimizer and learning rate: 0.001
+# Activation function (hidden layer): relu
+# Activation function (final layer): softmax
+# Loss function: categorical crossentropy 
+# L2 regularization
+
+lambda_vec <- exp(seq(-5,-3,length = 15)) # Notice the exp - efficient way to define a optimal set of values
+
+nn_2 <- tuning_run("NN_2.R",
+                   flags = list(lambda = lambda_vec)) 
+
+
+
+nn_2 <- ls_runs(runs_dir = "nn_2_high_level")
+
+# 1.2.1 Plotting validation curve
+
+## NB! Plot below will only work after you have defined best lambda value
+
+## High level lambda values plot
+
+nn_2_df <- data.frame(set = c(rep("Train", nrow(nn_2)), rep("Validation", nrow(nn_2))),
+                      error = c(nn_2$metric_loss, nn_2$metric_val_loss),
+                      lambda = c(nn_2$flag_lambda, nn_2$flag_lambda)
+                      ) 
+
+hl_nn_2 <- nn_2_df %>% 
+ggplot(aes(x = lambda, y = error, colour = set, fill = set)) +  
+  geom_point() + 
+  geom_line() +
+  labs(x= expression(lambda), y = "Error (categorical crossentropy)") + 
+  scale_color_manual(values=c("blue", "black")) + 
+  geom_vline(xintercept = min_lambda, linetype = "dashed", col = "red" ) +
+  theme_bw() + 
+  theme(legend.position = "none")
+
+## Focused lambda values plot
+
+min_lambda <- nn_2$flag_lambda[which(nn_2$metric_val_loss == min(nn_2$metric_val_loss))]
+
+nn_2_df <- data.frame(lambda = nn_2$flag_lambda,
+                   val_loss = nn_2$metric_val_loss,
+                   train_loss = nn_2$metric_loss)
+
+focus_nn_2 <- nn_2_df %>% 
+  ggplot(aes(x = lambda)) +  
+  geom_point(aes(y = val_loss, color = "Validation")) + 
+  geom_line(aes(y = val_loss, color = "Validation")) +
+  geom_point(aes(y = train_loss, color = "Train")) + 
+  geom_line(aes(y = train_loss, color = "Train")) + 
+  geom_smooth(aes(y = val_loss, color = "Validation smooth"), se =F) +
+  geom_smooth(aes(y = train_loss, color = "Train smooth"), se =F) + 
+  geom_vline(aes(xintercept = min_lambda), color = "red", linetype = "dashed"  ) + 
+  scale_color_manual(breaks = c("Validation", "Train", "Validation smooth", "Train smooth"),
+                     values = c("Validation" = "blue", "Train" = "black", "Validation smooth" = "lightblue" , "Train smooth" = "gray") ) +
+  geom_text(aes(x = min_lambda+0.006, y = max(val_loss) , label = paste('lambda', '==', round(min_lambda, 4))), parse = T, col = "red") +
+  labs(x = expression(lambda), y = " ") + 
+  theme_bw() + 
+  theme(legend.title = element_blank())
+
+grid.arrange(arrangeGrob(hl_nn_2, focus_nn_2, nrow = 1, ncol = 2))
+
+
+# 1.3 Comparison between model 1 and model 2 architectures
+
+# 1.3.1 Network data
+
+
+
+
+# 1.3.1 Transactional data
+
+
+# 1.3.1 All data
+
+
+
+
+
+```
+
+
 5.2.3 Model construction and testing
 
 ```{r, Model construction and testing - Neural network models - modelling }
 
 # 1. Defining network data's models
 
-# Note: From the hyper-parameter tuning two models are goin to be trained and tested 
+# Note: Two models are defined, trained and tested with the results obtained from the hyper parameter tuning process. Each model will be tr
+
 
 # 1.1 Model 1 
 
