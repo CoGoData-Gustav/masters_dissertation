@@ -22,6 +22,7 @@ library(GGally)
 library(gridExtra)
 library(gridtext)
 library(grid)
+library(ggpubr)
 
 
 # 2. Network Analytics
@@ -43,9 +44,6 @@ library(ROCR)
 library(keras)
 library(tensorflow)
 library(tfruns)
-
-
-
 
 ```
 
@@ -360,7 +358,7 @@ transactions_data_prep_func <- function(transactions_data_raw) {
   # 1. selecting variables and renaming them
   
   transactions_data_up <- transactions_data_raw %>% 
-    select(orig_acct, bene_acct,base_amt, tran_timestamp) %>% 
+    select(orig_acct, bene_acct, base_amt, tran_timestamp) %>% 
      rename(from = orig_acct,
            to = bene_acct,
            weight = base_amt) %>% 
@@ -1031,8 +1029,6 @@ return(sample_network_feature_df)
 # input: a directed sub-graph with more than two nodes
 # output: a data frame containing all the network metrics extracted from the sub-graph. 
 
-# NB! The function will only  be able to take as input an un-directed-weighted network.
-
 # 1. Defining additional functions that will be used within the network feature generation function
 
 # 1.1 Degree functions
@@ -1539,7 +1535,6 @@ test_all_features <- left_join(test_network_features[,-test_fraud_ind], test_tra
 
 # 4. EDA of structured data table(s)
 
-
 ```{r, EDA of structured data}
 
 #(can include how network evolve over time - if there is time)
@@ -1598,7 +1593,6 @@ test_all_features <- test_all_features[,-1]
 
 ```
 
-
 # 5.1.2 Hyper-parameter tuning 
 
 ```{r, hyper-parameter tuning - logistic regression models - modelling}
@@ -1629,7 +1623,7 @@ log_LASSO_model_network <- glmnet(x = as.matrix(train_network_features[,-c(ncol(
                                                 standardize = FALSE, 
                                                 family = 'binomial')
 
-plot(log_LASSO_model_network, xvar = 'lambda', label=TRUE)1
+plot(log_LASSO_model_network, xvar = 'lambda', label=TRUE)
 
 
 # transaction features
@@ -2046,6 +2040,8 @@ pi_hat_log_lasso_all_test <- predict(log_cv_model_all,
 
 Y_test <- test_network_features$is_fraud
 
+# 8.1 Network features
+
 # standard LR
 y_hat_log_std_network_ROC_test <- if_else(pi_hat_log_std_network_test >= threshold_std_network$optimal_threshold, "TRUE", "FALSE" )
 y_hat_log_std_network_PR_test <- if_else(pi_hat_log_std_network_test >= threshold_std_network_pr$optimal_threshold, "TRUE", "FALSE" )
@@ -2054,7 +2050,7 @@ y_hat_log_std_network_PR_test <- if_else(pi_hat_log_std_network_test >= threshol
 y_hat_log_lasso_network_ROC_test <- if_else(pi_hat_log_lasso_network_test >= threshold_lasso_network$optimal_threshold, "TRUE", "FALSE" )
 y_hat_log_lasso_network_PR_test <- if_else(pi_hat_log_lasso_network_test >= threshold_lasso_network_pr$optimal_threshold, "TRUE", "FALSE" )
 
-# 6.2 Transactional features
+# 8.2 Transactional features
 
 # standard LR
 y_hat_log_std_trans_ROC_test <- if_else(pi_hat_log_std_trans_test >= threshold_std_trans$optimal_threshold, "TRUE", "FALSE" )
@@ -2065,7 +2061,7 @@ y_hat_log_lasso_trans_ROC_test <- if_else(pi_hat_log_lasso_trans_test >= thresho
 y_hat_log_lasso_trans_PR_test <- if_else(pi_hat_log_lasso_trans_test >= threshold_lasso_trans_pr$optimal_threshold, "TRUE", "FALSE" )
 
 
-# 6.3 All features
+# 8.3 All features
 
 # standard LR
 y_hat_log_std_all_ROC_test <- if_else(pi_hat_log_std_all_test >= threshold_std_all$optimal_threshold, "TRUE", "FALSE" )
@@ -2076,7 +2072,7 @@ y_hat_log_lasso_all_ROC_test <- if_else(pi_hat_log_lasso_all_test >= threshold_l
 y_hat_log_lasso_all_PR_test <- if_else(pi_hat_log_lasso_all_test >= threshold_lasso_all_pr$optimal_threshold, "TRUE", "FALSE" )
 
 
-# saving all confusion matrices of all the models in a list
+# 9. saving all confusion matrices of all the models in a list
 
 log_test_results <- list(std_network_ROC = table(y_hat_log_std_network_ROC_test, Y_test),
                           std_network_PR = table(y_hat_log_std_network_PR_test, Y_test),
@@ -2107,6 +2103,9 @@ ggplot(aes(x = reorder(log_model, -class_accur), y = class_accur, group = 1, col
   labs(colour = "Lasso applied", x = "Logistic regression models", y = "Classification accuracy" ) +
   facet_wrap(threshold_tuning~.)
 
+# 10. Saving result training and testing results in a single RData file
+
+save(log_train_results, log_train_res, log_test_results, log_test_res, file = "LR_final_results.RData")
 
 
 ```
@@ -2829,6 +2828,11 @@ nn_1 <- tuning_run("NN_1.R",
                    flags = list(lambda = lambda_vec)) 
 
 
+nn_1 <- ls_runs(runs_dir = 'nn_1_high_level')
+
+nn_1 <- ls_runs(runs_dir = 'nn_1_focused')
+
+
 # 1.1.1 Plotting validation curve
 
 ## NB! Plot below will only work afer you have defined best lambda value
@@ -2872,7 +2876,8 @@ focus_nn_1 <- nn_1_df %>%
   geom_text(aes(x = min_lambda + 0.03, y = max(val_loss) , label = paste('lambda', '==', round(min_lambda, 4))), parse = T, col = "red") +
   labs(x = expression(lambda), y = " ") + 
   theme_bw() + 
-  theme(legend.title = element_blank())
+  theme(legend.title = element_blank(),
+        legend.position = "bottom")
 
 grid.arrange(arrangeGrob(hl_nn_1, focus_nn_1, nrow = 1, ncol = 2))
 
@@ -2893,8 +2898,9 @@ nn_2 <- tuning_run("NN_2.R",
                    flags = list(lambda = lambda_vec)) 
 
 
+nn_2 <- ls_runs(runs_dir = 'nn_2_high_level')
 
-nn_2 <- ls_runs(runs_dir = "nn_2_high_level")
+nn_2 <- ls_runs(runs_dir = 'nn_2_focused')
 
 # 1.2.1 Plotting validation curve
 
@@ -2939,25 +2945,67 @@ focus_nn_2 <- nn_2_df %>%
   geom_text(aes(x = min_lambda+0.006, y = max(val_loss) , label = paste('lambda', '==', round(min_lambda, 4))), parse = T, col = "red") +
   labs(x = expression(lambda), y = " ") + 
   theme_bw() + 
-  theme(legend.title = element_blank())
+  theme(legend.title = element_blank(),
+        legend.position = "bottom")
 
 grid.arrange(arrangeGrob(hl_nn_2, focus_nn_2, nrow = 1, ncol = 2))
 
 
 # 1.3 Comparison between model 1 and model 2 architectures
 
-# 1.3.1 Network data
+# Note: This piece of code will be re-run to generate plots for network, transactional, and all features data sets
+
+nn_1 <- ls_runs(runs_dir = 'nn_1_high_level_T' ) 
+nn_2 <- ls_runs(runs_dir = 'nn_2_high_level_T')
+
+data_combined <- data.frame(val_loss_mod_1 = nn_1$metric_val_loss,
+                            val_loss_mod_2 = nn_2$metric_val_loss,
+                            lambda = nn_1$flag_lambda)
+
+# high level plot
+plot_HL <- data_combined %>% 
+  ggplot(aes(x = lambda)) +  
+  geom_point(aes(y = val_loss_mod_1, color = "(8)-Network")) + 
+  geom_line(aes(y = val_loss_mod_1, color = "(8)-Network")) +
+  geom_point(aes(y = val_loss_mod_2, color = "(64)-Network")) + 
+  geom_line(aes(y = val_loss_mod_2, color = "(64)-Network")) + 
+  geom_smooth(aes(y = val_loss_mod_1, color = "(8)-Network smooth"), se =F) +
+  geom_smooth(aes(y = val_loss_mod_2, color = "(64)-Network smooth"), se =F) + 
+  scale_color_manual(breaks = c("(8)-Network", "(64)-Network", "(8)-Network smooth", "(64)-Network smooth"),
+                     values = c("(8)-Network" = "red", "(64)-Network" = "blue", "(8)-Network smooth" = "lightcoral" , "(64)-Network smooth" = "lightblue") ) +
+  labs(x = expression(lambda), y = "Validation error (categorical crossentropy)") + 
+  theme_bw() + 
+  theme(legend.position = "right",
+        legend.title =element_blank() )
 
 
+# focused plot
+min_lambda_1 <- nn_1$flag_lambda[which(nn_1$metric_val_loss == min(nn_1$metric_val_loss))]
+min_lambda_2 <- nn_2$flag_lambda[which(nn_2$metric_val_loss == min(nn_2$metric_val_loss))]
+
+data_combined <- data.frame(lambda = c(nn_1$flag_lambda, nn_2$flag_lambda),
+                            model = c(rep("Model 1",nrow(nn_1)), rep("(64)-Network",nrow(nn_2))),
+                            val_loss = c(nn_1$metric_val_loss, nn_2$metric_val_loss) 
+)
 
 
-# 1.3.1 Transactional data
+plot_focus <-  data_combined %>% 
+  ggplot(aes(x = lambda, y = val_loss, color = model)) +
+  geom_point() + 
+  geom_line() +
+  #geom_smooth(area = "transparent") +
+  #geom_vline(xintercept = min_lambda_1, col = "red", linetype = "dashed") + 
+  #geom_vline(xintercept = min_lambda_2, col = "blue", linetype = "dashed") + 
+  theme_bw() + 
+  scale_color_manual(values = c("Model 1" = "red", "Model 2" = "blue")) + 
+  labs(x = expression(lambda), y = "Validation error (categorical crossentropy)") +
+  coord_cartesian(xlim = c(0.0007,0.0062)) + 
+  #geom_text(aes(x = min_lambda_1 + 0.005, y = 0.105 , label = paste('lambda', '==', round(min_lambda_1, 4))), parse = T, col = "red") +
+  #geom_text(aes(x = min_lambda_2 + 0.005, y = 0.105 , label = paste('lambda', '==', round(min_lambda_2, 4))), parse = T, col = "blue") + 
+  theme(legend.position = "none")
 
 
-# 1.3.1 All data
-
-
-
+grid.arrange(arrangeGrob(plot_HL, plot_focus, nrow = 1, ncol = 2))
 
 
 ```
@@ -2967,96 +3015,759 @@ grid.arrange(arrangeGrob(hl_nn_2, focus_nn_2, nrow = 1, ncol = 2))
 
 ```{r, Model construction and testing - Neural network models - modelling }
 
-# 1. Defining network data's models
+# 1. Defining training and testing function for neural network and defining functions that will help evaluate the test performance of models
 
-# Note: Two models are defined, trained and tested with the results obtained from the hyper parameter tuning process. Each model will be tr
-
-
-# 1.1 Model 1 
-
-# define model
-model_1_network <- keras_model_sequential()
-
-model_1_network %>% 
-  layer_dense(units = 32, 
-              activation = 'relu', 
-              input_shape = c(27),
-              kernel_regularizer = regularizer_l2(l = 0.01)) %>%
-  layer_dense(units = 2, activation = 'softmax')
-
-# Compile model
-
-model_1_network %>% compile(loss = 'categorical_crossentropy',
-                  optimizer = 'adam',
-                  metrics = list('accuracy',metric_precision(), metric_recall(), metric_auc()))
-
-# Fit model
-
-history_1_network <- model_1_network %>% 
-  fit(train_network_features_nn,
-      train_target_nn,
-      epochs = 23,
-      batch_size = 100,
-      validation_split = 0.3)
-
-# Evaluate model's performance on Test data
-
-model_1_network %>% evaluate(test_network_features_nn, test_target_nn)
+# 1.1 F1 score
+f1_score <- function(precision, recall){
   
-# display confusion matrix
-Y_test_hat_network_1 <- predict_classes(model_1_network, test_network_features_nn)
-conf_mat_model_1_net <-  table(test_network_features$is_fraud, Y_test_hat_network_1)
-
-
-# 1.1 Model 2
-
-# define model
-model_2_network <- keras_model_sequential()
-
-model_2_network %>% 
-  layer_dense(units = 64, 
-              activation = 'relu', 
-              input_shape = c(27),
-              kernel_regularizer = regularizer_l2(l = 0.01)) %>%
-  layer_dense(units = 2, activation = 'softmax')
-
-# Compile model
-
-model_2_network %>% compile(loss = 'categorical_crossentropy',
-                  optimizer = 'adam',
-                  metrics = list('accuracy',metric_precision(), metric_recall(), metric_auc()))
-
-# Fit model
-
-history_2_network <- model_2_network %>% 
-  fit(train_network_features_nn,
-      train_target_nn,
-      epochs = 23,
-      batch_size = 100,
-      validation_split = 0.3)
-
-# Evaluate model's performance on Test data
-
-model_2_network %>% evaluate(test_network_features_nn, test_target_nn)
+  f1_score <- (2*precision*recall)/(precision + recall)
   
-# display confusion matrix
-Y_test_hat_network_2 <- predict_classes(model_2_network, test_network_features_nn)
-conf_mat_model_2_net <-  table(test_network_features$is_fraud, Y_test_hat_network_2)
+  return(f1_score)
+  
+}
+
+# 1.2 Balanced accuracy
+balanced_accuracy <- function(table){
+  
+  TP <-  table[2,2]
+  P <- sum(table[,2])
+  
+  TN <- table[1,1]
+  N <- sum(table[,1])
+  
+  
+  balanced_accuracy <- (TP/P + TN/N)/2
+  
+  return(balanced_accuracy)
+  
+}
+
+# 1.3 Neural network train/test function (fixed architecture of simple model)
+
+# Note: From the hyper-parameter tuning process, it was decided select the simple model (model 1) for all the data sets. It was because its validation error was very close to the more complex model (model 2). 
+
+NN_test_func <- function(train_x, train_y, test_x , test_y, orig_test_df, units, min_lambda, runs){
+  
+  runs <- runs # number of times the model will be re-evaluated
+  
+  result_df <- data.frame(runs = rep(NA,runs),
+                          train_acc = rep(NA,runs),
+                          train_prec = rep(NA,runs), 
+                          train_recall = rep(NA,runs),
+                          train_auc = rep(NA,runs),
+                          test_acc = rep(NA,runs),
+                          test_prec = rep(NA,runs), 
+                          test_recall = rep(NA,runs),
+                          test_auc = rep(NA,runs),
+                          test_balance_acc = rep(NA,runs),
+                          test_f1_score = rep(NA, runs)
+  )
+  
+  # defining list to save confusion matrices
+  conf_mat_result <- list()
+  
+  
+  for (i in 1:runs) {
+    
+    print(paste0("Starting run ", i))
+    
+    # define model
+    model <- keras_model_sequential()
+    
+    model %>% 
+      layer_dense(units = units, 
+                  activation = 'relu', 
+                  input_shape = c(dim(train_x)[2]),
+                  kernel_regularizer = regularizer_l2(l = min_lambda)) %>%
+      layer_dense(units = 2, activation = 'softmax')
+    
+    # Compile model
+    model %>% compile(loss = 'categorical_crossentropy',
+                      optimizer = 'adam',
+                      metrics = list('accuracy', metric_precision(), metric_recall(), metric_auc()))
+    
+    # Fit model
+    history <- model %>% 
+      fit(train_x,
+          train_y,
+          epochs = 23,
+          batch_size = 100,
+          validation_split = 0.3)
+    
+    # saving training results
+    epochs <- history$params$epochs
+    result_df[i,"runs"] <- i
+    result_df[i,"train_acc"] <- history$metrics$acc[epochs]
+    result_df[i,"train_prec"] <- history$metrics$precision[epochs]
+    result_df[i,"train_recall"] <- history$metrics$recall[epochs]
+    result_df[i,"train_auc"] <- history$metrics$auc[epochs]
+    
+    
+    # Evaluate model's performance on Test data
+    test_result <- model %>% evaluate(test_x, test_y)
+    
+    # saving test results
+    
+    result_df[i,"test_acc"] <- test_result$acc
+    result_df[i,"test_prec"] <- test_result$precision
+    result_df[i,"test_recall"] <- test_result$recall
+    result_df[i,"test_auc"] <- test_result$auc
+    
+    # display confusion matrix
+    Y_test_hat <- predict_classes(model, test_x)
+    conf_mat<-  table(Y_test_hat, orig_test_df$is_fraud)
+    
+    # saving final test results (extracted from confusion matrix)
+    result_df[i,"test_balance_acc"] <- balanced_accuracy(conf_mat)
+    result_df[i,"test_f1_score"] <-  f1_score(test_result$precision,test_result$recall)
+    conf_mat_result[[i]] <- conf_mat
+    
+    # removing variables created
+    k_clear_session()
+    rm(model)
+    
+  }
+  
+  test_results <- list(result_df = result_df,
+                       confusion_mat = conf_mat_result)
+  
+  
+  return(test_results)
+  
+  
+}
+
+# 2. Defining final neural network model
+
+# 1.1 Network data model
+
+# extracting best lambda
+
+nn_net <- ls_runs(runs_dir = "nn_1_focused_net")
+
+min_lambda_net <- nn_net$flag_lambda[which(nn_net$metric_val_loss == min(nn_net$metric_val_loss))]
+
+# training/testing neural net model
+nn_network_res <- NN_test_func(train_x = train_network_features_nn,
+                               train_y = train_target_nn,
+                               test_x = test_network_features_nn,
+                               test_y = test_target_nn,
+                               orig_test_df = test_network_features,
+                               units = 8,
+                               min_lambda = min_lambda_net,
+                               runs = 10)
+
+res_network_df <- nn_network_res$result_df
+mean(res_network_df$train_acc)
+mean(res_network_df$test_acc)
+
+
+# 1.2 Transactional data model
+
+nn_trans <- ls_runs(runs_dir = "nn_1_focused_trans")
+
+min_lambda_trans <- nn_trans$flag_lambda[which(nn_trans$metric_val_loss == min(nn_trans$metric_val_loss))]
+
+# training/testing neural net model
+nn_trans_res <- NN_test_func(train_x = train_transactional_features_nn,
+                               train_y = train_target_nn,
+                               test_x = test_transactional_features_nn,
+                               test_y = test_target_nn,
+                               orig_test_df = test_transactional_features,
+                               units = 8,
+                               min_lambda = min_lambda_trans,
+                               runs = 10)
+
+res_trans_df <- nn_trans_res$result_df
+mean(res_trans_df$train_acc)
+mean(res_trans_df$test_acc)
+
+
+# 1.3 All features data model
+
+nn_all <- ls_runs(runs_dir = "nn_1_focused_all")
+
+min_lambda_all <- nn_all$flag_lambda[which(nn_all$metric_val_loss == min(nn_all$metric_val_loss))]
+
+# training/testing neural net model
+nn_all_res <- NN_test_func(train_x = train_all_features_nn,
+                               train_y = train_target_nn,
+                               test_x = test_all_features_nn,
+                               test_y = test_target_nn,
+                               orig_test_df = test_all_features,
+                               units = 8,
+                               min_lambda = min_lambda_all,
+                               runs = 10)
+
+res_all_df <- nn_all_res$result_df
+mean(res_all_df$train_acc)
+mean(res_all_df$test_acc)
+
+ 
+ # 2. Saving all results
+ 
+save(nn_trans_res, nn_network_res, nn_all_res, file = "NN_final_results.RData")
+ 
+
+# test
+
+f_1 <- f1_score(precision = test$test_prec, recall = test$test_recall)  
+
+test <- nn_network_res$result_df
+
+
+nn_network_res$result_df$test_f1_score[1]
+nn_network_res$confusion_mat[[1]]
+
+# confusion matrix
+
+recall = 68/(68+4)
+precision = 68/(68+12)
+f_1 <- f1_score(precision = precision, recall = recall)  
+
+
+nn_network_res$result_df$test_f1_score[1]
+
+```
+
+6. Results interpretation
+
+```{r, results interpretation}
+
+# 1. Loading final results data of LR and NN models
+
+load("LR_final_results.RData")
+load("NN_final_results.RData")
+
+# 2.  Calculating f1_score and balanced accuracy for logistic regression models
+
+# 2.1 Defining function to calculate performance metrics
+
+LR_perf_metrics_func <- function(conf_matrix){
+  
+  # 1. Calculating f1 score
+  
+  # 1.1 calculating recall
+  table <- conf_matrix
+  
+  TP <- table[2,2]
+  FN <- table[1,2]
+  recall <- TP/(TP+FN)
+  
+  # 1.2  calculating precision
+  
+  FP <- table[2,1]
+  precision <- TP/(TP+FP)
+  
+  f1_score <- (2*precision*recall)/(precision + recall)
+  
+  # 2. Calculating balanced accuracy
+  P <- sum(table[,2])
+  TN <- table[1,1]
+  N <- sum(table[,1])
+  balanced_accuracy <- (TP/P + TN/N)/2
+  
+  result <- list(f1_score = f1_score,
+                 balanced_acc = balanced_accuracy)
+  
+  return(result)
+}
+
+
+
+NN_fix_func <- function(conf_matrix){
+  
+  # 1. Calculating f1 score
+  
+  # 1.1 calculating recall
+  table <- conf_matrix
+  
+  TP <- table[2,2]
+  FN <- table[1,2]
+  recall <- TP/(TP+FN)
+  
+  # 1.2  calculating precision
+  
+  FP <- table[2,1]
+  precision <- TP/(TP+FP)
+  
+  f1_score <- (2*precision*recall)/(precision + recall)
+  
+  # 2. Calculating balanced accuracy
+  P <- sum(table[,2])
+  TN <- table[1,1]
+  N <- sum(table[,1])
+  balanced_accuracy <- (TP/P + TN/N)/2
+  
+  result <- list(f1_score = f1_score,
+                 balanced_acc = balanced_accuracy,
+                 recall = recall,
+                 precision = precision)
+  
+  return(result)
+  }
+
+
+# 2.2 Training set calculations
+
+log_train_f1_score <- c()
+log_train_balanced_acc <- c()
+
+for (i in 1:length(log_train_results)) {
+  
+  current_conf_mat <- log_train_results[[i]]
+  
+  train_result <- LR_perf_metrics_func(current_conf_mat) 
+  
+  log_train_f1_score <- c(log_train_f1_score, train_result$f1_score)
+  
+  log_train_balanced_acc <- c(log_train_balanced_acc, train_result$balanced_acc)
+  
+}
+
+log_train_res <- log_train_res %>% 
+  mutate(f1_score = log_train_f1_score) %>% 
+  mutate(balance_acc = log_train_balanced_acc)
+
+
+# 2.3 Testing set calculations
+
+log_test_f1_score <- c()
+log_test_balanced_acc <- c()
+
+for (i in 1:length(log_test_results)) {
+  
+  current_conf_mat <- log_test_results[[i]]
+  
+  test_result <- LR_perf_metrics_func(current_conf_mat) 
+  
+  log_test_f1_score <- c(log_test_f1_score, test_result$f1_score)
+  
+  log_test_balanced_acc <- c(log_test_balanced_acc, test_result$balanced_acc)
+  
+}
+
+log_test_res <- log_test_res %>% 
+  mutate(f1_score = log_test_f1_score) %>% 
+  mutate(balance_acc = log_test_balanced_acc)
+
+
+# 2.4 Fixing test precision, test recall and balanced accuracy in NN models
+
+# 2.4.1 network data 
+
+nn_test_f1_score <- c()
+nn_test_balanced_acc <- c()
+nn_test_recall <- c()
+nn_test_precision <- c()
+
+for (i in 1:length(nn_network_res$confusion_mat)) {
+  
+  current_conf_mat <- nn_network_res$confusion_mat[[i]]
+  
+  test_result <- NN_fix_func(current_conf_mat) 
+  
+  nn_test_f1_score <- c(nn_test_f1_score, test_result$f1_score)
+  
+  nn_test_balanced_acc <- c(nn_test_balanced_acc, test_result$balanced_acc)
+  
+  nn_test_recall <- c(nn_test_recall, test_result$recall)
+  
+  nn_test_precision <- c(nn_test_precision, test_result$precision)
+  
+}
+
+nn_network_res$result_df <- nn_network_res$result_df %>% 
+  mutate(test_f1_score = nn_test_f1_score) %>% 
+  mutate(test_balance_acc = nn_test_balanced_acc) %>% 
+  mutate(test_prec = nn_test_precision) %>% 
+  mutate(test_recall = nn_test_recall)
+
+# 2.4.2 Transactional data 
+
+nn_test_f1_score <- c()
+nn_test_balanced_acc <- c()
+nn_test_recall <- c()
+nn_test_precision <- c()
+
+for (i in 1:length(nn_trans_res$confusion_mat)) {
+  
+  current_conf_mat <- nn_trans_res$confusion_mat[[i]]
+  
+  test_result <- NN_fix_func(current_conf_mat) 
+  
+  nn_test_f1_score <- c(nn_test_f1_score, test_result$f1_score)
+  
+  nn_test_balanced_acc <- c(nn_test_balanced_acc, test_result$balanced_acc)
+  
+  nn_test_recall <- c(nn_test_recall, test_result$recall)
+  
+  nn_test_precision <- c(nn_test_precision, test_result$precision)
+  
+}
+
+nn_trans_res$result_df <- nn_trans_res$result_df %>% 
+  mutate(test_f1_score = nn_test_f1_score) %>% 
+  mutate(test_balance_acc = nn_test_balanced_acc) %>% 
+  mutate(test_prec = nn_test_precision) %>% 
+  mutate(test_recall = nn_test_recall)
+
+# 2.4.3 Combined data 
+
+nn_test_f1_score <- c()
+nn_test_balanced_acc <- c()
+nn_test_recall <- c()
+nn_test_precision <- c()
+
+for (i in 1:length(nn_all_res$confusion_mat)) {
+  
+  current_conf_mat <- nn_all_res$confusion_mat[[i]]
+  
+  test_result <- NN_fix_func(current_conf_mat) 
+  
+  nn_test_f1_score <- c(nn_test_f1_score, test_result$f1_score)
+  
+  nn_test_balanced_acc <- c(nn_test_balanced_acc, test_result$balanced_acc)
+  
+  nn_test_recall <- c(nn_test_recall, test_result$recall)
+  
+  nn_test_precision <- c(nn_test_precision, test_result$precision)
+  
+}
+
+nn_all_res$result_df <- nn_all_res$result_df %>% 
+  mutate(test_f1_score = nn_test_f1_score) %>% 
+  mutate(test_balance_acc = nn_test_balanced_acc) %>% 
+  mutate(test_prec = nn_test_precision) %>% 
+  mutate(test_recall = nn_test_recall)
+
+# 3. Creating data frame
+
+results_df <- data.frame(data_set = c(rep("network",3),rep("transactional",3), rep("combined",3)),
+                         model = rep(c("LR_PR","LR_ROC", "NN_8"),3),
+                         train_acc = c(log_train_res$class_accur[log_train_res$log_model == "lasso_network_PR"],
+                                       log_train_res$class_accur[log_train_res$log_model == "lasso_network_ROC"],
+                                       mean(nn_network_res$result_df$train_acc),
+                                       log_train_res$class_accur[log_train_res$log_model == "lasso_trans_PR"],
+                                       log_train_res$class_accur[log_train_res$log_model == "lasso_trans_ROC"],
+                                       mean(nn_trans_res$result_df$train_acc),
+                                       log_train_res$class_accur[log_train_res$log_model == "lasso_all_PR"],
+                                       log_train_res$class_accur[log_train_res$log_model == "lasso_all_ROC"],
+                                       mean(nn_all_res$result_df$train_acc)),
+                         test_acc = c(log_test_res$class_accur[log_test_res$log_model == "lasso_network_PR"],
+                                       log_test_res$class_accur[log_test_res$log_model == "lasso_network_ROC"],
+                                       mean(nn_network_res$result_df$test_acc),
+                                       log_test_res$class_accur[log_test_res$log_model == "lasso_trans_PR"],
+                                       log_test_res$class_accur[log_test_res$log_model == "lasso_trans_ROC"],
+                                       mean(nn_trans_res$result_df$test_acc),
+                                       log_test_res$class_accur[log_test_res$log_model == "lasso_all_PR"],
+                                       log_test_res$class_accur[log_test_res$log_model == "lasso_all_ROC"],
+                                       mean(nn_all_res$result_df$test_acc)),
+                         train_f1_score = c(log_train_res$f1_score[log_train_res$log_model == "lasso_network_PR"],
+                                       log_train_res$f1_score[log_train_res$log_model == "lasso_network_ROC"],
+                                       mean(nn_network_res$result_df$train_f1_score),
+                                       log_train_res$f1_score[log_train_res$log_model == "lasso_trans_PR"],
+                                       log_train_res$f1_score[log_train_res$log_model == "lasso_trans_ROC"],
+                                       mean(nn_trans_res$result_df$train_f1_score),
+                                       log_train_res$f1_score[log_train_res$log_model == "lasso_all_PR"],
+                                       log_train_res$f1_score[log_train_res$log_model == "lasso_all_ROC"],
+                                       mean(nn_all_res$result_df$train_f1_score)),
+                         test_f1_score = c(log_test_res$f1_score[log_test_res$log_model == "lasso_network_PR"],
+                                       log_test_res$f1_score[log_test_res$log_model == "lasso_network_ROC"],
+                                       mean(nn_network_res$result_df$test_f1_score),
+                                       log_test_res$f1_score[log_test_res$log_model == "lasso_trans_PR"],
+                                       log_test_res$f1_score[log_test_res$log_model == "lasso_trans_ROC"],
+                                       mean(nn_trans_res$result_df$test_f1_score),
+                                       log_test_res$f1_score[log_test_res$log_model == "lasso_all_PR"],
+                                       log_test_res$f1_score[log_test_res$log_model == "lasso_all_ROC"],
+                                       mean(nn_all_res$result_df$test_f1_score)),
+                         test_balanced_acc = c(log_test_res$balance_acc[log_test_res$log_model == "lasso_network_PR"],
+                                       log_test_res$balance_acc[log_test_res$log_model == "lasso_network_ROC"],
+                                       mean(nn_network_res$result_df$test_balance_acc),
+                                       log_test_res$balance_acc[log_test_res$log_model == "lasso_trans_PR"],
+                                       log_test_res$balance_acc[log_test_res$log_model == "lasso_trans_ROC"],
+                                       mean(nn_trans_res$result_df$test_balance_acc),
+                                       log_test_res$balance_acc[log_test_res$log_model == "lasso_all_PR"],
+                                       log_test_res$balance_acc[log_test_res$log_model == "lasso_all_ROC"],
+                                       mean(nn_all_res$result_df$test_balance_acc))
+                         
+                         )
+
+# Visualisations
+
+
+# 1.4  Plotting final results
+
+# distribution plot data sets - F1 score
+final_res_box <- results_df %>% 
+  ggplot(aes(x = test_f1_score, fill = data_set)) +
+  labs(x = " ") +
+  theme_bw() +
+  scale_fill_brewer(name = "Data set", labels = c("Combined", "Network", "Transactional"), palette = "Dark2") + 
+  geom_boxplot()
+
+final_res_dense <- results_df %>% 
+  ggplot(aes(x = test_f1_score, fill =data_set)) +
+  geom_density(alpha = 0.4) +  
+  scale_fill_brewer(name = "Data set", labels = c("Combined", "Network", "Transactional"),  palette = "Dark2") + 
+  labs(y = "Density", x = "F1-score") +
+  theme_bw()
+
+grid.arrange(arrangeGrob(final_res_box, final_res_dense, nrow = 2, ncol = 1))
+
+
+# distribution plot data sets - balanced accuracy
+final_res_box <- results_df %>% 
+  ggplot(aes(x = test_balanced_acc, fill = data_set)) +
+  labs(x = " ") +
+  theme_bw() +
+  scale_fill_brewer(name = "Data set", labels = c("Combined", "Network", "Transactional"), palette = "Dark2") + 
+  geom_boxplot()
+
+final_res_dense <- results_df %>% 
+  ggplot(aes(x = test_balanced_acc, fill =data_set)) +
+  geom_density(alpha = 0.4) +  
+  scale_fill_brewer(name = "Data set", labels = c("Combined", "Network", "Transactional"),  palette = "Dark2") + 
+  labs(y = "Density", x = "Balanced accuracy") +
+  theme_bw()
+
+grid.arrange(arrangeGrob(final_res_box, final_res_dense, nrow = 2, ncol = 1))
+
+ 
+ # facet grid of datasets
+ 
+bar_test_acc <- results_df %>% 
+  ggplot(aes(x = data_set, y = test_acc,  fill = model)) +
+  geom_bar(position = "dodge", stat = "identity")  +
+  coord_cartesian(ylim = c(0.85,1)) +
+  scale_fill_brewer(palette = "Dark2", name = " ", labels = c("Logistic regression (PR)", "Logistic regression (ROC)", "(8)-Network") ) +
+  geom_text(aes(label = round(test_acc,3)), position = position_dodge(width = 0.9), vjust = -0.1, size = 3) + 
+  theme_bw() + 
+  theme(legend.position = "top",
+        text = element_text(size = 10)) +
+  labs(x = "Dataset", y = "Test accuracy")
+
+bar_test_f1 <- results_df %>% 
+  ggplot(aes(x = data_set, y = test_f1_score,  fill = model)) +
+  geom_bar(position = "dodge", stat = "identity")  +
+  coord_cartesian(ylim = c(0.3,1)) + 
+  scale_fill_brewer(palette = "Dark2", name = " ", labels = c("Logistic regression (PR)", "Logistic regression (ROC)", "(8)-Network") ) +
+  geom_text(aes(label = round(test_f1_score,3)), position = position_dodge(width = 0.9), vjust = -0.1, size = 3) + 
+  theme_bw() + 
+  theme(legend.position = "top",
+        text = element_text(size = 10)) +
+  labs(x = "Dataset", y = "Test F1-score")
+
+bar_test_balanced_acc <- results_df %>% 
+  ggplot(aes(x = data_set, y = test_balanced_acc,  fill = model)) +
+  geom_bar(position = "dodge", stat = "identity")  +
+  coord_cartesian(ylim = c(0.6,1)) +
+  scale_fill_brewer(palette = "Dark2", name = " ", labels = c("Logistic regression (PR)", "Logistic regression (ROC)", "(8)-Network") ) +
+  geom_text(aes(label = round(test_balanced_acc,3)), position = position_dodge(width = 0.9), vjust = -0.1, size = 3) + 
+  theme_bw() + 
+  theme(legend.position = "none",
+        text = element_text(size = 10)) +
+  labs(x = "Dataset", y = "Test balanced accuracy")
+
+
+
+grid.arrange(arrangeGrob(bar_test_f1, bar_test_balanced_acc, nrow = 2, ncol = 1))
+
+ggarrange(
+  bar_test_acc,     
+  ggarrange(bar_test_f1, bar_test_balanced_acc, ncol = 2 ), 
+  nrow = 2) 
+   
+
+```
+
+
+
+TESTING OUTCOMES
+
+```{r, }
+
+
+# LR test models
+
+conf_mat <- log_test_results$lasso_network_ROC
+
+conf_mat
+
+# test accuracy
+
+(1182+69)/(1182+69+3+56) # correct
+
+
+func_res <- LR_perf_metrics_func (conf_mat)
+
+
+
+# recall (works!)
+func_res$recall
+(69)/(69+3)
+
+
+# precision (works!)
+func_res$precision
+(69)/(69+56)
+
+
+
+# f1 (works!)
+func_res$f1_score 
+
+2*(((69)/(69+3))*((69)/(69+56)))/((69)/(69+3) + (69)/(69+56))
+
+
+# balanced accuracy 
+func_res$balanced_acc
+
+(1182/(1182+56) + 69/(69+3))/2
+
+
+
+
+
+
+
+
+
 
 
 ```
 
 
 
+
+
 ### DEMO CODE ###
 
+```{r,}
 
-Test code
+nn_net <- ls_runs(runs_dir = "nn_1_focused_net")
+
+min_lambda_net <- nn_net$flag_lambda[which(nn_net$metric_val_loss == min(nn_net$metric_val_loss))]
+
+# training/testing neural net model
+train_x = train_network_features_nn
+train_y = train_target_nn
+test_x = test_network_features_nn
+test_y = test_target_nn
+orig_test_df = test_network_features
+units = 8
+min_lambda = min_lambda_net
+runs = 10
+
+  runs <- runs # number of times the model will be re-evaluated
+  
+  result_df <- data.frame(runs = rep(NA,runs),
+                          train_acc = rep(NA,runs),
+                          train_prec = rep(NA,runs), 
+                          train_recall = rep(NA,runs),
+                          train_auc = rep(NA,runs),
+                          test_acc = rep(NA,runs),
+                          test_prec = rep(NA,runs), 
+                          test_recall = rep(NA,runs),
+                          test_auc = rep(NA,runs),
+                          test_balance_acc = rep(NA,runs),
+                          test_f1_score = rep(NA, runs)
+  )
+  
+  # defining list to save confusion matrices
+  conf_mat_result <- list()
+  
+  
+  for (i in 1:runs) {
+    
+    i = 1
+    print(paste0("Starting run ", i))
+    
+    # define model
+    model <- keras_model_sequential()
+    
+    model %>% 
+      layer_dense(units = units, 
+                  activation = 'relu', 
+                  input_shape = c(dim(train_x)[2]),
+                  kernel_regularizer = regularizer_l2(l = min_lambda)) %>%
+      layer_dense(units = 2, activation = 'softmax')
+    
+    # Compile model
+    model %>% compile(loss = 'categorical_crossentropy',
+                      optimizer = 'adam',
+                      metrics = list('accuracy', metric_precision(), metric_recall(), metric_auc()))
+    
+    # Fit model
+    history <- model %>% 
+      fit(train_x,
+          train_y,
+          epochs = 23,
+          batch_size = 100,
+          validation_split = 0.3)
+    
+    # saving training results
+    epochs <- history$params$epochs
+    result_df[i,"runs"] <- i
+    result_df[i,"train_acc"] <- history$metrics$acc[epochs]
+    result_df[i,"train_prec"] <- history$metrics$precision[epochs]
+    result_df[i,"train_recall"] <- history$metrics$recall[epochs]
+    result_df[i,"train_auc"] <- history$metrics$auc[epochs]
+    
+    
+    # Evaluate model's performance on Test data
+    test_result <- model %>% evaluate(test_x, test_y)
+    
+    # saving test results
+    
+    result_df[i,"test_acc"] <- test_result$acc
+    result_df[i,"test_prec"] <- test_result$precision
+    result_df[i,"test_recall"] <- test_result$recall
+    result_df[i,"test_auc"] <- test_result$auc
+    
+    # display confusion matrix
+    Y_test_hat <- predict_classes(model, test_x)
+    conf_mat<-  table(Y_test_hat, orig_test_df$is_fraud)
+    
+    # saving final test results (extracted from confusion matrix)
+    result_df[i,"test_balance_acc"] <- balanced_accuracy(conf_mat)
+    result_df[i,"test_f1_score"] <-  f1_score(test_result$precision,test_result$recall)
+    conf_mat_result[[i]] <- conf_mat
+    
+    # removing variables created
+    k_clear_session()
+    rm(model)
+    
+  }
+  
+  test_results <- list(result_df = result_df,
+                       confusion_mat = conf_mat_result)
+  
+  
+  return(test_results)
+  
+}
+
+# 2. Defining final neural network model
+
+# 1.1 Network data model
+
+# extracting best lambda
+
+
+
+
+
+```
+
+
+
+Test code1
 ```{r, test code}
 
 #### transactional feature function additions #####
 
-transaction_df <- training_transactions_final
+transaction_df <- testing_transactions_final
 
 
 # 3. Generating time period stats for accounts
@@ -3272,6 +3983,33 @@ which(split_point_df_filt$resulting_ratio == min(split_point_df_filt$resulting_r
 
 Unused code
 ```{r, unused code}
+
+### validation data_combined %>%
+
+min_lambda_1 <- nn_1$flag_lambda[which(nn_1$metric_val_loss == min(nn_1$metric_val_loss))]
+min_lambda_2 <- nn_2$flag_lambda[which(nn_2$metric_val_loss == min(nn_2$metric_val_loss))]
+
+data_combined <- data.frame(lambda = c(nn_1$flag_lambda, nn_2$flag_lambda),
+                            model = c(rep("Model 1",nrow(nn_1)), rep("Model 2",nrow(nn_2))),
+                            val_loss = c(nn_1$metric_val_loss, nn_2$metric_val_loss) 
+)
+
+
+  ggplot(aes(x = lambda, y = val_loss, color = model)) +
+  geom_point() + 
+  geom_line() +
+  geom_smooth(area = "transparent") +
+  #geom_vline(xintercept = min_lambda_1, col = "red", linetype = "dashed") + 
+  #geom_vline(xintercept = min_lambda_2, col = "blue", linetype = "dashed") + 
+  theme_bw() + 
+  scale_color_manual(values = c("Model 1" = "red", "Model 2" = "blue")) + 
+  labs(x = expression(lambda), y = "Validation error (categorical crossentropy)") +
+  #geom_text(aes(x = min_lambda_1 + 0.005, y = 0.105 , label = paste('lambda', '==', round(min_lambda_1, 4))), parse = T, col = "red") +
+  #geom_text(aes(x = min_lambda_2 + 0.005, y = 0.105 , label = paste('lambda', '==', round(min_lambda_2, 4))), parse = T, col = "blue") + 
+  theme(legend.title = element_blank())
+
+
+
 ### Precision recall function
 
 y_true_test <- sample(c(1,0), prob = c(0.05, 0.95), 100, replace = T)
