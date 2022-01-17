@@ -1,0 +1,45 @@
+% Example of Algorithm - (Full version)
+
+\begin{algorithm}[H]
+%\SetAlgoNoLine
+ \Input{A tree $T$ represented by an array {\sf Parent}$[1,\ldots,n]$.}
+\Output{A minimum secure dominating set of $T$, represented by a boolean array $X$.}
+\For{$i\leftarrow 1$ to $n$}{
+{\sf A3Label}$[i] \leftarrow$ {\sc False}\;
+$X[i] \leftarrow$ {\sc False}\;
+{\sf Labels}$[i] \leftarrow [0,0,0,0,0,0,0]$\;
+{\bf if} vertex $i$ is a anchor of $T$ {\bf then} {\sf Branch}$[i] \leftarrow$ {\sc True}\;
+{\sf Previous1Label}$[i] \leftarrow 0$\;
+}
+\For{$i\leftarrow n$ down to $2$}{
+$\ell \leftarrow$ {\sf\bf EffectiveLabel}({\sf Labels}[$i$])\;
+{\bf if} $\ell$ is odd {\bf then} $X[i] \leftarrow ${\sc True}\;
+{\sf Labels$[$Parent$[i],\ell(i)+1 \ (\rm{mod}\ 7)]$} $++$\;
+\If{$\ell=2$ {\bf and} {\sf Branch$[$Parent$[i]]$}}{
+{\sf A3Label[Parent}$[i]] \leftarrow$ {\sc True}\;
+{\sf prev} $\leftarrow$ {\sf Previous1Label$[$Parent$[i]]$}\;
+{\bf if} {\sf prev} $>0$ {\bf then} $X[${\sf prev}$] \leftarrow$ {\sc True}\;
+}
+\If{$\ell=0$ {\bf and} {\sf Branch$[$Parent$[i]]$}}{
+\If{{\sf A3Label$[$Parent$[i]]$}}{
+$X[i] \leftarrow$ {\sc True}\;
+}
+\Else{
+{\sf prev} $\leftarrow$ {\sf Previous1Label$[$Parent$[i]]$}\;
+{\bf if} {\sf prev} $>0$ {\bf then} $X[${\sf prev}$] \leftarrow$ {\sc True}\;
+{\sf Previous1Label$[$Parent$[i]] \leftarrow i$}\;
+}
+}
+}
+$\ell \leftarrow$ {\sf\bf EffectiveLabel}({\sf Labels}[$1$])\;
+{\bf if} $\ell$ is odd {\bf then} $X[1] \leftarrow ${\sc True}\;
+{\bf if}  {\sf Labels}$[1,j]=0$ for $j=1,3,4,5,6$ {\bf then} $X[1] \leftarrow$ {\sc True}\;
+{\bf if} {\sf Labels}$[1,j]=0$ for $j=1,3,5,6$ {\bf and} {\sf Labels}$[1,0] \geq |${\sf Labels}$[1]-1|$  {\bf then} $X[1] \leftarrow$ {\sc True}\;
+\If{$\ell=3$}{
+{\sf prev} $\leftarrow$ {\sf Previous1Label$[1]$}\;
+{\bf if} {\sf prev} $ > 0$ {\bf then} $X[$\sf{prev}$]$ $\leftarrow$ {\sc True}\;
+}
+\Return[$X$]\;
+\caption[{{Tree algorithm}}]{{\sf\bf DefendTree}}
+\label{Alg:Tree}
+\end{algorithm}

@@ -1,0 +1,200 @@
+\chapter{Tables} \label{app_1}
+
+% 1. CH3 - Table of variables excluded from raw data tables
+\begin{sidewaystable}[ht]
+\begin{adjustbox}{center}
+\begin{tabular}{cll}
+\hline
+\multicolumn{1}{l}{\textbf{Raw data table}} & \textbf{Feature name} & \textbf{Reason for exclusion from analysis}                                                                                                                                                                      \\ \hline
+\multirow{9}{*}{\texttt{accounts.csv}}               & \texttt{dsply\_nm}             & Identical to \texttt{acct\_id} feature.                                                                                                                                                                                   \\
+                                            & \texttt{ty}pe                  & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{acct\_stat}            & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{acct\_rptng\_crncy}    & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{branch\_id}            & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{open\_dt}              & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{close\_dt}             & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{tx\_bahavior\_id}      & \begin{tabular}[c]{@{}l@{}}It indicates which accounts are \\ fraudulent and which are not. \\ Similar to the response used \\ (\texttt{prior\_sar\_count}), therefore excluded.\end{tabular}                             \\
+                                            & \texttt{bank\_id}              & Singular value feature.                                                                                                                                                                                          \\ \hline
+\multirow{2}{*}{\texttt{alert\_transactions.csv}}    & \texttt{tx\_type}              & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{is\_sar}               & \begin{tabular}[c]{@{}l@{}}Singular value feature. If a transaction was \\ in the \texttt{alert\_transaction.csv} then \\ it was automatically classified as being a \\ money-laundering transaction\end{tabular}            \\ \hline
+\multirow{5}{*}{\texttt{alert\_accounts.csv}}        & \texttt{is\_sar}              & \begin{tabular}[c]{@{}l@{}}Singular value feature. If an account was in \\ the \texttt{alert\_accounts.csv}, then the account \\ was automatically classified as taking part \\ in money-laundering activities.\end{tabular} \\
+                                            & \texttt{schedule\_id}          & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{bank\_id}              & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{start}                 & Singular value feature.                                                                                                                                                                                          \\
+                                            & \texttt{end}                   & Singular value feature.                                                                                                                                                                                         
+\end{tabular}
+\end{adjustbox}
+\caption{The table summarises all the raw data features excluded from the analysis. In addition, the table provides the name of the raw data table, the features excluded from the raw data table, and the reason thereof.}
+\label{tab:ch3_raw_features_removed}
+\end{sidewaystable}
+
+% 2. CH3 - Network features 
+\begin{sidewaystable}[ht]
+\begin{adjustbox}{scale=0.6,center}
+\begin{tabular}{lll|lll}
+\hline
+\textbf{\begin{tabular}[c]{@{}l@{}}Feature \\ number\end{tabular}} & \textbf{Feature name}                   & \textbf{Description}                                                                                                                                                                   & \textbf{\begin{tabular}[c]{@{}l@{}}Feature \\ number\end{tabular}} & \textbf{Feature name}     & \textbf{Description}                                                                                                                                                                                                             \\ \hline
+1                                                                  & \texttt{acct\_id}                                & Unique ID for bank account.                                                                                                                                                            & 16                                                                 & \texttt{closeness\_centrality}     & \begin{tabular}[c]{@{}l@{}}The average distance from an account to all \\ other accounts (measured by the number of ``hops'').\end{tabular}                                                                                      \\ \hline
+2                                                                  & \texttt{transitivity}                            & \begin{tabular}[c]{@{}l@{}}The cluster coefficient for an account \\ (see calculation in Table X).\end{tabular}                                                                        & 17                                                                 & \texttt{farness}                   & Is the reciprocal of the closeness centrality.                                                                                                                                                                                   \\ \hline
+3                                                                  & \texttt{total\_degree}                           & \begin{tabular}[c]{@{}l@{}}The total number of  ``connections'' an account has.\\ This corresponds to the total amount of edges of a node.\end{tabular}                                & 18                                                                 & \texttt{eigen\_vector\_centrality} & \begin{tabular}[c]{@{}l@{}}The eigenvector centrality score corresponds to the \\ values of the first eigenvector of the graph adjacency \\ matrix (see calculation in Table X).\end{tabular}                                    \\ \hline
+4                                                                  & \texttt{fraud\_degree}                           & \begin{tabular}[c]{@{}l@{}}The number of money laundering accounts \\ connected to an account.\end{tabular}                                                                            & 19                                                                 & \texttt{betweenness}               & \begin{tabular}[c]{@{}l@{}}Counts the number of times an account lies on the geodesic \\ between any accounts nodes in the network.\end{tabular}                                                                                 \\ \hline
+5                                                                  & \texttt{non\_fraud\_degree}                      & \begin{tabular}[c]{@{}l@{}}The number of honest accounts \\ connected to an account.\end{tabular}                                                                                      & 20                                                                 & \texttt{avg\_geodesic}             & \begin{tabular}[c]{@{}l@{}}The average geodesic is the average of the shortest paths \\ between an account and all the other accounts.\end{tabular}                                                                              \\ \hline
+6                                                                  & \texttt{degree\_strenght}                        & \begin{tabular}[c]{@{}l@{}}The total transactional amount received and payed \\ by an account.\end{tabular}                                                                            & 21                                                                 & \texttt{page\_rank\_base}          & An accounts PageRank value (see calculation in Table X).                                                                                                                                                                         \\ \hline
+7                                                                  & \texttt{node\_density}                           & \begin{tabular}[c]{@{}l@{}}The ratio of the number of connections and \\ a number of possible connections an account can have.\end{tabular}                                            & 22                                                                 & \texttt{page\_rank\_fraud}         & \begin{tabular}[c]{@{}l@{}}An accounts PageRank value if the starting vector \\ (usually a vector of ones) is defined as a zero value \\ for honest accounts and a non-zero value for money \\ laundering accounts.\end{tabular} \\ \hline
+8                                                                  & \texttt{relational\_neighbour\_not\_fraud}       & \begin{tabular}[c]{@{}l@{}}The ratio of a accounts' neighbours that are not participating \\ money laundering activity.\end{tabular}                                                   & 23                                                                 & \texttt{in\_degree}                & \begin{tabular}[c]{@{}l@{}}The frequency of an account total number of incoming\\ transactions (payments received).\end{tabular}                                                                                                 \\ \hline
+9                                                                  & \texttt{relational\_neighbour\_fraud}            & \begin{tabular}[c]{@{}l@{}}The ratio of a accounts' neighbours that are \\ participating money laundering activity.\end{tabular}                                                       & 24                                                                 & \texttt{in\_degree\_fraud}         & \begin{tabular}[c]{@{}l@{}}The frequency of the total number of money laundering \\ transactions an account has received.\end{tabular}                                                                                           \\ \hline
+10                                                                 & \texttt{prob\_relational\_neighbour\_not\_fraud} & \begin{tabular}[c]{@{}l@{}}The relative number of neighbours of an account which \\ are honest.\end{tabular}                                                                           & 25                                                                 & \texttt{in\_degree\_non\_fraud}    & \begin{tabular}[c]{@{}l@{}}The frequency of the total number of honest \\ transactions an account has received.\end{tabular}                                                                                                     \\ \hline
+11                                                                 & \texttt{prob\_relational\_neighbour\_fraud}      & \begin{tabular}[c]{@{}l@{}}The relative number of neighbours of an account which \\ are involved in money laundering activity.\end{tabular}                                            & 26                                                                 & \texttt{out\_degree}               & \begin{tabular}[c]{@{}l@{}}The frequency of an account total number of outgoing\\ transactions (payments made).\end{tabular}                                                                                                     \\ \hline
+12                                                                 & \texttt{total\_triangles}                        & \begin{tabular}[c]{@{}l@{}}The total number of fully connected subgraphs (consisting of three accounts) \\ an account is a part of.\end{tabular}                                       & 27                                                                 & \texttt{out\_degree\_fraud}        & \begin{tabular}[c]{@{}l@{}}The frequency of the total number of money laundering \\ transactions an account has made.\end{tabular}                                                                                               \\ \hline
+13                                                                 & \texttt{legit\_triangles}                        & \begin{tabular}[c]{@{}l@{}}The total number of triangles an account is part of that only consists of \\ other honest accounts.\end{tabular}                                            & 28                                                                 & \texttt{out\_degree\_non\_fraud}   & \begin{tabular}[c]{@{}l@{}}The frequency of the total number of honest \\ transactions an account has made.\end{tabular}                                                                                                         \\ \hline
+14                                                                 & \texttt{semi\_fraud\_triangles}                  & \begin{tabular}[c]{@{}l@{}}The total number of triangles an account is part of that consists of \\ other honest accounts and accounts involved money laundering activity.\end{tabular} & 29                                                                 & \texttt{is\_fraud}                 & \begin{tabular}[c]{@{}l@{}}The response variable, indicating if an \\ an account is a money-laundering account.\end{tabular}                                                                                                     \\ \hline
+15                                                                 & \texttt{fraud\_triangles}                        & \begin{tabular}[c]{@{}l@{}}The total number of triangles an account is part of that only consists of \\ other accounts involved in money laundering activity.\end{tabular}             &                                                                    &                           &                                                                                                                                                                                                                                  \\ \hline
+\end{tabular}
+\end{adjustbox}
+\caption{The finalised network features and a short description of each. Features 1-22 was constructed from the undirected weighted graph components, and features 23-28 was constructed from the directed graph components.}
+\label{tab:ch3_network_features}
+\end{sidewaystable}
+
+% 3. CH3 - Transactional features 
+\begin{sidewaystable}[ht]
+\begin{adjustbox}{scale=0.7}
+\begin{tabular}{lll|lll}
+\hline
+\textbf{\begin{tabular}[c]{@{}l@{}}Feature \\ number\end{tabular}} & \textbf{\begin{tabular}[c]{@{}l@{}}Feature \\ name\end{tabular}} & \textbf{\begin{tabular}[c]{@{}l@{}}Feature \\ description\end{tabular}}                                                                                                       & \textbf{\begin{tabular}[c]{@{}l@{}}Feature \\ number\end{tabular}} & \textbf{\begin{tabular}[c]{@{}l@{}}Feature \\ name\end{tabular}} & \textbf{\begin{tabular}[c]{@{}l@{}}Feature \\ description\end{tabular}}                                                                                          \\ \hline
+1                                                                  & \texttt{acct\_id}                                                         & Unique ID for bank account.                                                                                                                                                   & 13                                                                 & \texttt{outgoing\_min}                                                    & The minimum payment amount an account makes.                                                                                                                     \\ \hline
+2                                                                  & \texttt{init\_balance}                                                    & \begin{tabular}[c]{@{}l@{}}Initial balance when the client created \\ the account.\end{tabular}                                                                               & 14                                                                 & \texttt{outgoing\_round\_numbers\_count}                                  & \begin{tabular}[c]{@{}l@{}}The frequency of transactions made by \\ an account that is a rounded amount, \\ for example (R1000 as opposed to R999).\end{tabular} \\ \hline
+3                                                                  & \texttt{incoming\_total}                                                  & \begin{tabular}[c]{@{}l@{}}The total transactional amount of payments \\ received by the account.\end{tabular}                                                                & 15                                                                 & \texttt{total\_non\_fraud\_payments}                                      & \begin{tabular}[c]{@{}l@{}}The total transactional amount of payments \\ made by the account to honest accounts.\end{tabular}                                    \\ \hline
+4                                                                  & \texttt{incoming\_avg}                                                   & \begin{tabular}[c]{@{}l@{}}The average incoming transactional amount \\ an account receives.\end{tabular}                                                                     & 16                                                                 & \texttt{total\_fraud\_payments}                                           & \begin{tabular}[c]{@{}l@{}}The total transactional amount of payments \\ made by the account that is to money \\ laundering accounts.\end{tabular}               \\ \hline
+5                                                                  & \texttt{incoming\_max}                                                    & \begin{tabular}[c]{@{}l@{}}The maximum incoming transactional amount \\ an account receives.\end{tabular}                                                                     & 17                                                                 & \texttt{receive\_period\_max}                                            & \begin{tabular}[c]{@{}l@{}}The maximum time that has passed since \\ the account has received a payment.\end{tabular}                                            \\ \hline
+6                                                                  & \texttt{incoming\_min}                                                    & \begin{tabular}[c]{@{}l@{}}The minimum incoming transactional amount \\ an account receives.\end{tabular}                                                                     & 18                                                                 & \texttt{receive\_period\_min}                                             & \begin{tabular}[c]{@{}l@{}}The minimum time that has passed since \\ the account has received a payment.\end{tabular}                                            \\ \hline
+7                                                                  & \texttt{incoming\_round\_numbers\_count}                                  & \begin{tabular}[c]{@{}l@{}}The frequency of incoming transactions received by \\ an account that is a rounded amount, \\ for example (R1000 as opposed to R999).\end{tabular} & 19                                                                 & \texttt{receive\_period\_avg}                                             & \begin{tabular}[c]{@{}l@{}}The average time that has passed since \\ the account has received a payment.\end{tabular}                                            \\ \hline
+8                                                                  & \texttt{non\_fraud\_total\_income}                                        & \begin{tabular}[c]{@{}l@{}}The total transactional amount of payments \\ received by the account that is from honest accounts.\end{tabular}                                   & 20                                                                 & \texttt{payment\_period\_max}                                            & \begin{tabular}[c]{@{}l@{}}The maximum time that has passed since \\ the account has made a payment.\end{tabular}                                                \\ \hline
+9                                                                  & \texttt{fraud\_total\_income}                                            & \begin{tabular}[c]{@{}l@{}}The total transactional amount of payments \\ received by the account that is from money \\ laundering accounts.\end{tabular}                      & 21                                                                 & \texttt{payment\_period\_min}                                             & \begin{tabular}[c]{@{}l@{}}The minimum time that has passed since \\ the account has made a payment.\end{tabular}                                                \\ \hline
+10                                                                 & \texttt{outgoing\_total}                                                  & \begin{tabular}[c]{@{}l@{}}The total transactional amount of payments \\ made by the account.\end{tabular}                                                                    & 22                                                                 & \texttt{payment\_period\_avg}                                             & \begin{tabular}[c]{@{}l@{}}The average time that has passed since \\ the account has made a payment.\end{tabular}                                                \\ \hline
+11                                                                 & \texttt{outgoing\_avg}                                                    & \begin{tabular}[c]{@{}l@{}}The average outgoing transactional \\ amount of an account.\end{tabular}                                                                           & 23                                                                 & \texttt{is\_fraud}                                                       & \begin{tabular}[c]{@{}l@{}}The response variable, indicating if an \\ an account is a money-laundering account.\end{tabular}                                     \\ \hline
+12                                                                 & \texttt{outgoing\_max}                                                    & The maximum payment amount an account makes.                                                                                                                                  &                                                                    &                                                                  &                                                                                                                                                                  \\ \hline
+\end{tabular}
+\end{adjustbox}
+\caption{A table of the transactional features and a short description of each used for the finalised transactional feature data set.}
+\label{tab:ch3_trans_features}
+\end{sidewaystable}
+
+% 4. Confusion matrices %%%
+
+% LR-ROC - Network
+\begin{table}
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1182              & 3               \\
+\multicolumn{1}{c}{}                                    & 1 & 56                & 69              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the LR-ROC model applied to the test network feature data set.}
+\label{tab:ch3_cm_LR_ROC_network}
+\end{table}
+
+% LR-PR - Network
+\begin{table}
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1212              & 3               \\
+\multicolumn{1}{c}{}                                    & 1 & 26                & 69              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the LR-PR model applied to the test network feature data set.}
+\label{tab:ch3_cm_LR_PR_network}
+\end{table}
+
+% (8)-Network - Network
+\begin{table}
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1223              & 3               \\
+\multicolumn{1}{c}{}                                    & 1 & 15                & 69              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the (8)-NN model applied to the test network feature data set.}
+\label{tab:ch3_cm_nn_network}
+\end{table}
+
+% LR-ROC - Trans
+\begin{table}
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1051              & 15              \\
+\multicolumn{1}{c}{}                                    & 1 & 187               & 57              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the LR-ROC model applied to the test transactional feature data set.}
+\label{tab:ch3_cm_LR_ROC_trans}
+\end{table}
+
+% LR-PR - Trans
+\begin{table}
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1199              & 27              \\
+\multicolumn{1}{c}{}                                    & 1 & 39                & 45              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the LR-PR model applied to the test transactional feature data set.}
+\label{tab:ch3_cm_LR_PR_trans}
+\end{table}
+
+% 8-NN - Trans
+\begin{table}
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1201              & 48              \\
+\multicolumn{1}{c}{}                                    & 1 & 37                & 24              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the (8)-NN model applied to the test transactional feature data set.}
+\label{tab:ch3_cm_nn_trans}
+\end{table}
+
+% LR-ROC - Combined
+\begin{table}
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1180              & 3               \\
+\multicolumn{1}{c}{}                                    & 1 & 58                & 69              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the LR-ROC model applied to the test combined feature data set.}
+\label{tab:ch3_LR_ROC_all}
+\end{table}
+
+% LR-PR - Combined
+\begin{table}
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1222              & 6               \\
+\multicolumn{1}{c}{}                                    & 1 & 16                & 66              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the LR-PR model applied to the test combined feature data set.}
+\label{tab:ch3_LR_PR_all}
+\end{table}
+
+% NN-8 - Combined
+\begin{table}[t!]
+\centering
+\begin{tabular}{llll}
+                                                        &   & \multicolumn{2}{c}{\textbf{Actual}} \\
+                                                        &   & False             & True            \\ \hline
+\multicolumn{1}{c}{\multirow{2}{*}{\textbf{Predicted}}} & 0 & 1228              & 6               \\
+\multicolumn{1}{c}{}                                    & 1 & 10                & 66              \\ \hline
+\end{tabular}
+\caption{Confusion matrix of the (8)-NN model applied to the test combined feature data set.}
+\label{tab:ch3_nn_all}
+\end{table}
+

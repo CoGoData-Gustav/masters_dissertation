@@ -1,0 +1,238 @@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% type the body of your abstracts here
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\engabstract{
+Financial crime is known to have a deleterious effect on the economy and society. More specifically, it is estimated that the total turnover losses due to money laundering alone is USD 267 billion. Anti-money laundering process defines procedures, laws, and regulations to protect financial institutions from money laundering. Anti-money laundering processes have experienced a degree of success in reducing money laundering activity. However, it remains a tremendously difficult task to identify illicit activity due to the dynamic nature of fraudsters and their ability to emulate the behaviour of honest clients. The project proposes an unconventional approach that could potentially help anti-money laundering process in their identification and risk rating/scoring of banking clients that may be participants of some money laundering typology. The projects aimed to provide evidence that stronger, more robust classifiers can be constructed by incorporating network-based features (derived using network analytics). The project uses ``network analytics'' as an umbrella to encapsulate complex network analysis, social network analysis, and graph theory concepts. The rationale is that including these additional network features or metrics can enrich the currently used feature sets deployed in anti-money laundering processes and provide additional dimensions that indicate the relational aspect between banking accounts. To test the project's premises, raw transactional data was synthetically generated using AMLSim. After that, a feature engineering process was conducted, which produced three structured data sets. All three data sets contained the same banking accounts, however, the features describing each account was defined differently for each data set. The first data set was the network feature data set (consisting of the network derived features). The second data set consisted of transactional features. Finally, the third data set contained both the network and transactional derived features (combined feature data set). The learning task of the project was a binary classification problem, where the model should predict, based on the set of input features given, if a bank account is involved in money laundering activity. The project used logistic regression and neural network models as the chosen classifiers. After meticulously defining each model, the project tested a selected few models. The results show that the network feature models (the models that used the network features as their input) significantly outperformed the transnational feature models (both in F1-score and balanced accuracy scores). Also, there are slight indications that suggest combining the features
+sets could overall be beneficial.              
+
+
+
+
+
+
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%\ifoddmakenewpage % compensate for long abstracts
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% ECSA Outcome (ONLY SKRIPSIE!!)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ifthenelse{\equal{\printtype}{skripsie}}{%
+
+
+\ecsa{      %ecsa outcomes
+\begin{center}
+
+
+\begin{tabular}{|p{8.3cm}|p{2.7cm}|p{1.5cm}|}
+\hline
+\headcol   & \multicolumn{2}{c|}{\textbf{Reference}} \\ \cline{2-3}
+\headcol
+\textbf{Outcome} & \textbf{Section} & \textbf{Page} \\ \hline
+\mbox{1. Problem} solving: Demonstrate competence to identify, assess, formulate and solve convergent and divergent engineering problems creatively and innovatively. & \textit{All}  & \textit{All} \\ \hline
+\rowcol
+{5. Engineering methods}, skills and tools, including information technology: Demonstrate competence to use appropriate engineering methods, skills and tools, including those based on information technology. & \textit{2,3,4 \& 5}  & \textit{3--57}    \\ \hline
+\mbox{6. Professional} and technical communication: Demonstrate competence to communicate effectively, both orally and in writing, with engineering audiences and the community at large.  & \textit{All}  & \textit{All}            \\ \hline
+\rowcol
+\mbox{9. Independent} learning ability: Demonstrate competence to engage in independent learning through well developed learning skills. & \textit{2,3,4 \& 5} & \textit{3--57}  \\ \hline
+\mbox{10. Engineering} professionalism: Demonstrate critical awareness of the need to act professionally and ethically and to exercise judgement and take responsibility within own limits of competence.  & \textit{All}                 & \textit{All}  \\ \hline
+\end{tabular}
+\end{center}
+}
+\ifoddmakenewpage
+}{}%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% list your acknowledgements here
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\acknowledgements{
+\begin{itemize}
+\item 
+\end{itemize}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%\ifoddmakenewpage % compensate for long acknowledgements
+
+
+
+
+\tableofcontents
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% populate your glossary here - remove if you dont want one
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%\Glossary % makes the heading
+
+%\begin{description}
+%\item[Something] Description of that something.
+%\item[Something] Description of that something.
+%\end{description}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%\ifoddmakenewpage
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% populate your list of symbols here - remove if you dont want one
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\listofsymbols % makes the heading
+
+\begin{symboltable}
+
+$\mathcal{D}$ & Denotes a data set. \\
+
+$\mathcal{I}$ & Denotes the number of observations within a data set.\\
+
+$\boldsymbol{x}_i$ & Denotes the $i$-th predictor in a data set.\\
+
+$\boldsymbol{y}_i$ & Denotes the $i$-th response in a data set. \\
+$^T$ & Denotes the transpose operator. \\ 
+
+$p$ & Denotes the number of predictors within a data set. \\
+
+$q$ & Denotes the number of responses within a data set. \\
+
+$\mathcal{X}$ & Denotes all possible input values (input space). \\
+
+$\mathcal{Y}$ & Denotes all possible output values (output space). \\
+
+$f$ & Denotes an unknown target function describing the relationship between the input and output spaces. \\
+
+$\mathcal{H}$ & Denotes the hypothesis set of candidate formulas under consideration. \\
+
+$g$ & Denotes the learning algorithms chosen hypothesis. This chosen hypothesis best approximates $f$. \\
+
+$G$ & Denotes a graph or network. \\
+
+$\mathcal{N}$ & Denotes set of vertices or nodes within a graph. \\
+
+$\mathcal{L}$ & Denotes set of links or edges within a graph. \\
+
+$N$ & Denotes the number of vertices within a graph. \\
+
+$K$ & Denotes the number of edges within a graph. \\
+
+$l_{ij}$ & Denotes the link between nodes $i$ and $j$. \\
+
+$\boldsymbol{A}$ & Denotes the adjacency matrix with dimensions $N \times N$.\\
+
+$a_{ij}$ & Denotes the entries of the adjacency matrix. These binary values indicate a link between nodes $i$ and $j$. \\
+
+$G^W$ & Denotes a weighted graph. \\
+
+$\mathcal{W}_G$ & Denotes the graphs weight matrix.\\ %*
+
+$w^G_{ij}$ & Denotes the weight value of a graph between nodes $i$ and $j$.  \\%*
+
+$\mathcal{G}'$ & Denotes an induced sub-graph. \\
+
+$C_k$ & Denotes a cycle of length $k$.\\
+
+$G^W(t)$ & Denotes a weighted graph at time $t$. \\
+
+$\lambda$ & Denotes the regularisation factor. \\
+
+$r_c$ & Denotes recall - the ratio of the number of true positives divided by the sum of the true positives and the false negatives. \\
+
+$p_r$ & Denotes precision - the ratio of the number of true positives divided by the sum of the true positives, and
+false positives. \\
+
+$w^l_{kj}$ & Denotes the weight values of a neural networks weight matrix, $\boldsymbol{W}_l$. More specifically, the $kj$-th weight parameter linking the $k$-th node in layer $l$-1 and $j$-th node in layer $l$. \\
+
+$a^l_j$ & Denotes the $j$-th node on $l$-th layer of a standard feed-forward neural network. \\
+
+$b^l_j$ & Denotes the bias vectors of $j$-th layer. \\
+
+$\sigma(.)_l$ & Denotes the activation function on layer $l$. \\
+
+$\nu$ & Denotes the learning rate for the chosen optimisation routine (for example, gradient descent). \\
+
+$\theta$ & Denotes the threshold value for the logistic regression model. \\
+
+\end{symboltable}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%\ifoddmakenewpage
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% populate your list of acronyms here - remove if you dont want one
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\listofacronyms % makes the heading
+
+\begin{description}
+\item[SVM:] Support vector machines
+\item[EDA:] Exploratory data analysis
+\item[MSE:] Mean square error
+\item[ROC:] Receiver operating characteristics
+\item[ReLU:] Rectified linear unit
+\item[IWLS:] Iterative Weighted Least Squares method
+\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%\ifoddmakenewpage
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% lists - remove what you dont need
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\listoffigures
+%\ifoddmakenewpage
+\listoftables
+%\ifoddmakenewpage
+%\listofalgorithms
+%\ifoddmakenewpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
