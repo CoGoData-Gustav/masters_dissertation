@@ -17,13 +17,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(stringr)
 library(lubridate)
-#library(DataExplorer)
+library(DataExplorer)
 library(GGally)
 library(gridExtra)
 library(gridtext)
 library(grid)
 library(ggpubr)
-
+library(ggrepel)
 
 # 2. Network Analytics
 library(igraph)
@@ -32,6 +32,7 @@ library(igraph)
 library(caret)
 library(glmnet)
 library(ROCR)
+
 
 # install.packages("keras")
 # install.packages("tensorflow")
@@ -43,6 +44,11 @@ library(ROCR)
 
 library(keras)
 library(tensorflow)
+
+# install_keras()
+# install_tensorflow()
+
+
 library(tfruns)
 
 ```
@@ -1872,7 +1878,7 @@ test_all_features <- left_join(test_network_features[,-test_fraud_ind], test_tra
 
 ```{r, EDA of structured data}
 
-#(can include how network evolve over time - if there is time)
+#(can include if needed)
 
 ```
 
@@ -1932,6 +1938,33 @@ test_all_features <- test_all_features[,-1]
 
 ```{r, hyper-parameter tuning - logistic regression models - modelling}
 
+# 0. Defining function that extracts Beta coefficients of the predictors
+
+LR_coef_extraction <- function(lr_model, training_set_full){
+  
+  # extracting beta coefficients from LR model
+  LR_coef_df <- as.data.frame(summary(coef(lr_model, s = "lambda.1se")))
+  
+  # creating predictor data frame to store results
+  LR_predictors <- data.frame(i = c(1, 2:(ncol(training_set_full))),
+                                    predictor_name = c("(Intercept)", names(training_set_full[,-c(ncol(training_set_full))])))
+  
+  # combining coef and predictor df
+  LR_predictors_up <- LR_predictors %>% 
+    left_join(LR_coef_df, by = "i") %>% 
+    rename(beta_coef = x) %>% 
+    select(predictor_name, beta_coef)
+  
+  # remvoving NA values
+  LR_predictors_up[is.na(LR_predictors_up)] <- 0
+  
+  
+  return(LR_predictors_up)
+  
+}
+
+
+
 # 1. Constructing standard logistic regression models
 
 # network features LR model
@@ -1959,6 +1992,58 @@ log_LASSO_model_network <- glmnet(x = as.matrix(train_network_features[,-c(ncol(
                                                 family = 'binomial')
 
 plot(log_LASSO_model_network, xvar = 'lambda', label=TRUE)
+
+### New
+coef_matrix_df <- data.frame(as.list(log_LASSO_model_network$beta[1,]))
+
+
+for (i in 2:dim(log_LASSO_model_network$beta)[1]) {
+  
+  current_predictor <- data.frame(as.list(log_LASSO_model_network$beta[i,])) 
+
+  coef_matrix_df <- rbind(coef_matrix_df, current_predictor)
+  
+}
+
+
+coef_matrix_df$predictors <- names(train_network_features[,-c(ncol(train_network_features))])
+
+# pivot longer
+
+coef_df <- pivot_longer(coef_matrix_df,
+                        cols = 1:ncol(coef_matrix_df)-1,
+                        names_to = "lambda_itter", 
+                        values_to = "coef_value" ) %>% 
+  mutate(log_lambda_value = rep(log(log_LASSO_model_network$lambda),dim(log_LASSO_model_network$beta)[1])) %>% 
+  mutate(number =  rep(1:dim(log_LASSO_model_network$beta)[2],dim(log_LASSO_model_network$beta)[1])) %>% 
+  mutate(number_char = as.character(rep(1:dim(log_LASSO_model_network$beta)[1], each = dim(log_LASSO_model_network$beta)[2])))
+
+coef_df$label <- NA
+coef_df$label[which(coef_df$number == max(coef_df$number))] <- coef_df$number_char[which(coef_df$number == max(coef_df$number))]
+
+
+
+# visualization
+
+coef_df %>% 
+  ggplot(aes(y = coef_value, x = log_lambda_value, col = predictors)) +
+  geom_line() +
+  geom_label_repel(aes(label = label),
+                   nudge_x = -4,
+                   nudge_y = 0.5,
+                   na.rm = TRUE,
+                   max.overlaps = dim(log_LASSO_model_network$beta)[1]) +
+  xlim(-15, max(log(log_LASSO_model_network$lambda))) +
+  
+  theme_bw() +
+  theme(legend.position = "none")
+  
+
+
+
+### New
+
+
 
 
 # transaction features
@@ -1998,7 +2083,26 @@ log_cv_model_network <- cv.glmnet(x = as.matrix(train_network_features[,-c(ncol(
 plot(log_cv_model_network)
 log_cv_model_network$lambda.1se
 
-test <- log_cv_model_network$lambda
+### NEW ###
+network_coef_df <- LR_coef_extraction(lr_model = log_cv_model_network, 
+                                      training_set_full = train_network_features)
+
+# visualisation network coefficent
+
+network_coef_df[-1,] %>% # removing intercept 
+  ggplot(aes(x = predictor_name, y = beta_coef)) +
+  geom_segment(
+    aes(x=predictor_name, xend=predictor_name, y=0, yend=beta_coef), 
+    color=ifelse(network_coef_df[-1,]$beta_coef != 0, "blue", "grey"), 
+    size=ifelse(network_coef_df[-1,]$beta_coef != 0, 1, 0.7)) +
+  geom_point(
+    color=ifelse(network_coef_df[-1,]$beta_coef != 0, "blue", "grey"), 
+    size=ifelse(network_coef_df[-1,]$beta_coef != 0,  1, 0.7)
+  ) + 
+  labs(x = "Predictors", y = "Coefficients") +
+  coord_flip() +
+  theme_bw()
+### NEW ###
 
 # transactional features
 log_cv_model_trans <- cv.glmnet(x = as.matrix(train_transactional_features[,-c(ncol(train_transactional_features))]),
@@ -2012,6 +2116,29 @@ log_cv_model_trans <- cv.glmnet(x = as.matrix(train_transactional_features[,-c(n
 plot(log_cv_model_trans)
 log_cv_model_trans$lambda.1se
 
+
+### NEW ###
+trans_coef_df <- LR_coef_extraction(lr_model = log_cv_model_trans, 
+                                      training_set_full = train_transactional_features)
+
+# visualisation network coefficent
+
+trans_coef_df[-1,] %>% # removing intercept 
+  ggplot(aes(x = predictor_name, y = beta_coef)) +
+  geom_segment(
+    aes(x=predictor_name, xend=predictor_name, y=0, yend=beta_coef), 
+    color=ifelse(trans_coef_df[-1,]$beta_coef != 0, "red", "grey"), 
+    size=ifelse(trans_coef_df[-1,]$beta_coef != 0, 1, 0.7)) +
+  geom_point(
+    color=ifelse(trans_coef_df[-1,]$beta_coef != 0, "red", "grey"), 
+    size=ifelse(trans_coef_df[-1,]$beta_coef != 0,  1, 0.7)
+  ) + 
+  labs(x = "Predictors", y = "Coefficients") +
+  coord_flip() +
+  theme_bw()
+### NEW ###
+
+
 # all features
 log_cv_model_all <- cv.glmnet(x = as.matrix(train_all_features[,-c(ncol(train_all_features))]),
                                y = train_all_features$is_fraud,
@@ -2023,6 +2150,27 @@ log_cv_model_all <- cv.glmnet(x = as.matrix(train_all_features[,-c(ncol(train_al
 
 plot(log_cv_model_all)
 log_cv_model_all$lambda.1se
+
+### NEW ###
+all_coef_df <- LR_coef_extraction(lr_model = log_cv_model_all, 
+                                      training_set_full = train_all_features)
+
+# visualisation network coefficent
+ all_coef_df[-1,] %>% # removing intercept 
+  mutate(predictor_color = if_else(predictor_name %in% names(train_network_features), "blue", "red")) %>% # removing intercept
+  ggplot(aes(x = predictor_name, y = beta_coef)) +
+  geom_segment(
+    aes(x=predictor_name, xend=predictor_name, y=0, yend=beta_coef), 
+    color=ifelse(test$predictor_color == "blue", "blue", "red"), 
+    size=ifelse(test$beta_coef != 0, 1, 0.5)) +
+  geom_point(
+    color=ifelse(test$predictor_color == "blue", "blue", "red"), 
+    size=ifelse(test$beta_coef != 0,  1, 0.5)
+  ) + 
+  labs(x = "Predictors", y = "Coefficients") +
+  coord_flip() +
+  theme_bw()
+### NEW ###
 
 
 # 4. Probability Predictions (Training)
@@ -2092,7 +2240,10 @@ optimal_threshold_ROC <- function(model_performance){
   lines(c(0,1), c(0,1), col = 'gray', lty = 4)
   points(model_performance@x.values[[1]][max_gmean_ind] , model_performance@y.values[[1]][max_gmean_ind] , col = "red", pch = 19)
   text(model_performance@x.values[[1]][max_gmean_ind] , model_performance@y.values[[1]][max_gmean_ind], labels = round(optimal_ROC_threshold,3), col = "red", pos = 3)
-  legend("bottomright", legend=c("Optimal threshold", "Standard logistic regression model", "No skill classifier"), col=c("red", "black", "gray"), pch = c(19, NA, NA), lty = c(0,1,4))
+
+   op <- par(cex = 0.8)  
+  
+  legend("bottomright", legend=c("Optimal threshold", "Logistic regression model", "No skill classifier"), col=c("red", "black", "gray"), pch = c(19, NA, NA), lty = c(0,1,4))
   
    ROC_plot <- recordPlot()
    plot.new()
@@ -2128,7 +2279,10 @@ optimal_threshold_PR <- function(model_performance){
   abline(h=0, col="gray", lty = 4)
   points(model_performance@x.values[[1]][max_f_ind] , model_performance@y.values[[1]][max_f_ind] , col = "red", pch = 19)
   text(model_performance@x.values[[1]][max_f_ind] , model_performance@y.values[[1]][max_f_ind], labels = round(optimal_threshold,3), col = "red", pos = 3)
-  legend("left",box.lty=0, inset = 0.02, legend=c("Optimal threshold", "Standard logistic regression model", "No skill classifier"), col=c("red", "black", "gray"), pch = c(19, NA, NA), lty = c(0,1,4))
+  
+  op <- par(cex = 0.8) 
+  
+  legend("left",box.lty=0, inset = 0.02, legend=c("Optimal threshold", "Logistic regression model", "No skill classifier"), col=c("red", "black", "gray"), pch = c(19, NA, NA), lty = c(0,1,4))
   
   PR_plot <- recordPlot()
   plot.new()
@@ -2462,6 +2616,7 @@ train_target_nn <- train_network_features %>%
   mutate(is_fraud = if_else(is_fraud == T, 1,0)) %>% 
   to_categorical()
 
+
 # Note: The training target will be the same for all data sets (above we used the network feature data set but we could have either one of the other two).
 
 # 1.1.1 removing client_ID, assigning a numeric value to response, and scaling features
@@ -2525,6 +2680,162 @@ test_all_features_nn <- test_all_features %>%
 
 ```
 
+# 5.2.2 Feature/Predictor value selection (for evaluating response curves - metioned in section 5.2.4)
+
+```{r, feature value selection (for eveluating response curves)}
+
+# Purpose: To look which variables to fix for NN response curve generations.
+
+# 1. Defining needed functions to extract response curve values for each data set
+
+# function that calculates unique length of each feature
+unique_length_func <- function(x){
+  length(unique(x))
+}
+
+# function that classifies a feature as integer or numeric
+feature_logic_func <- function(x){
+  
+  total_rows <- length(x)
+  if(sum(x %% 1 == 0) == total_rows){
+    outcome <- "integer"
+  }else{
+    outcome <- "numeric"
+  }
+  
+  return(outcome)
+  
+}
+
+
+value_selection_assist_func <- function(train_df, train_df_scaled){
+  
+  # Note: train_df is the scaled train df that should also contain only predictors and the training response. Look at the following template:
+  
+# 1. Constructing summary df
+
+# 1.1 Calculating feature unique length
+features_length <- apply(train_df, 2, unique_length_func)
+
+# 1.2 Calculating if a feature is a numeric or an integer
+feature_logic <- apply(train_df, 2, feature_logic_func)
+
+numeric_integer_summary_df <- data.frame(feature_names = names(features_length)) %>% 
+  mutate(unique_instances = features_length) %>% 
+  mutate(feature_logic = feature_logic) %>% 
+  mutate(selection_method = if_else(feature_logic == "numeric", "Median", "Majority rule"))
+
+# 2. Numeric features
+
+# 2.1 Selecting feature names
+numeric_feature_names <- numeric_integer_summary_df %>% 
+  filter(feature_logic == "numeric") %>% 
+  select(feature_names)
+
+numeric_feature_names <- numeric_feature_names[["feature_names"]]
+
+# 2.2 Selecting numeric features and calculating values
+numeric_train_df <- train_df_scaled[numeric_feature_names]
+
+numeric_features_selected_values <- apply(numeric_train_df, MARGIN = 2, median) %>% 
+  as.data.frame() %>% 
+  rename(value = ".")
+
+# 3. Integer features
+
+# 3.1 Extracting interger names
+integer_feature_names <- numeric_integer_summary_df %>% 
+  filter(feature_logic == "integer") %>% 
+  select(feature_names)
+
+integer_feature_names <- integer_feature_names[["feature_names"]]
+
+dis_feature_names <- integer_feature_names[integer_feature_names != "is_fraud"]
+
+# 3.2 Calculating aggregating stats for each featrue
+if(length(dis_feature_names) != 0){
+
+  ## defining global variable and storage
+  total_rows <- nrow(train_df_scaled)
+  final_df <- data.frame(index_num = 1:10)
+
+  for (i in 1:length(dis_feature_names)) {
+    
+  ## generating counting stats for current feature
+    dis_feature <- dis_feature_names[i]
+    
+    current_table <- train_df_scaled %>% 
+      select(!!sym(dis_feature), is_fraud) %>% 
+      group_by(!!sym(dis_feature)) %>% 
+      summarise(count = n()) %>%
+      mutate(perc = 100*count/total_rows) %>% 
+      arrange(desc(perc)) %>% 
+      head(10)
+    
+    current_table <- as.data.frame(current_table) %>% 
+      mutate(index_num = 1:nrow(current_table))
+    
+  ## renaming columns
+    names(current_table) <- c(dis_feature_names[i], paste0("count - ",dis_feature_names[i]), paste0("perc - ",dis_feature_names[i]), "index_num")
+    
+    
+    final_df <- left_join(final_df, current_table, by = "index_num")
+    
+  }
+
+integer_features_selected_values <- final_df
+
+}else{
+  
+  integer_features_selected_values <- "No integers"
+  
+}
+
+
+# 4. Saving result
+
+res <- list(feature_summary_df = numeric_integer_summary_df,
+            numeric_features_df = numeric_features_selected_values,
+            integer_features_df = integer_features_selected_values)
+
+return(res)
+
+}
+
+# 2. Selecting values for response curves 
+
+# 2.1 Network data
+train_network_features_nn_df <- as.data.frame(train_network_features_nn) %>% 
+  mutate(is_fraud = train_network_features$is_fraud)
+
+network_selected_values_list <-  value_selection_assist_func(train_df_scaled = train_network_features_nn_df,
+                                                             train_df = train_network_features[,-1])
+
+
+# 2.2 Transaction data
+train_trans_features_nn_df <- as.data.frame(train_transactional_features_nn) %>% 
+  mutate(is_fraud = train_transactional_features$is_fraud)
+
+trans_selected_values_list <-  value_selection_assist_func(train_df_scaled = train_trans_features_nn_df,
+                                                           train_df = train_transactional_features[,-1])
+
+# 2.3 Combined data
+train_all_features_nn_df <- as.data.frame(train_all_features_nn) %>% 
+  mutate(is_fraud = train_all_features$is_fraud)
+
+all_selected_values_list <-  value_selection_assist_func(train_df_scaled = train_all_features_nn_df,
+                                                           train_df = train_all_features[,-1])
+
+
+# 3. exporting some result to excell
+
+# write.xlsx(network_selected_values_list$integer_features_df, file = "network_intergers.xlsx")
+# write.xlsx(trans_selected_values_list$integer_features_df, file = "trans_intergers.xlsx")
+# write.xlsx(all_selected_values_list$integer_features_df, file = "all_intergers.xlsx")
+
+
+```
+
 5.2.2 Hyper-parameter tuning - validation curves generation
 
 Note: Our approach is to fix the architecture of the neural network model (having a certain complexity threshold) and to apply regularization as a mechanism to control the complexity (such that the model generalizes well).
@@ -2550,9 +2861,9 @@ nn_1 <- tuning_run("NN_1.R",
                    flags = list(lambda = lambda_vec)) 
 
 
-nn_1 <- ls_runs(runs_dir = 'nn_1_high_level')
-
 nn_1 <- ls_runs(runs_dir = 'nn_1_focused')
+
+nn_1 <- ls_runs(runs_dir = 'nn_1_high_level')
 
 
 # 1.1.1 Plotting validation curve
@@ -2574,7 +2885,8 @@ ggplot(aes(x = lambda, y = error, colour = set, fill = set)) +
   scale_color_manual(values=c("black", "blue")) + 
   geom_vline(xintercept = min_lambda, linetype = "dashed", col = "red" ) +
   theme_bw() +
-  theme(legend.position = "none")
+  theme(legend.position = "top",
+        legend.title = element_blank())
 
 ## Focused lambda values plot
 
@@ -2595,11 +2907,11 @@ focus_nn_1 <- nn_1_df %>%
   geom_vline(aes(xintercept = min_lambda), color = "red", linetype = "dashed"  ) + 
   scale_color_manual(breaks = c("Validation", "Train", "Validation smooth", "Train smooth"),
                      values = c("Validation" = "blue", "Train" = "black", "Validation smooth" = "lightblue" , "Train smooth" = "gray") ) +
-  geom_text(aes(x = min_lambda + 0.03, y = max(val_loss) , label = paste('lambda', '==', round(min_lambda, 4))), parse = T, col = "red") +
-  labs(x = expression(lambda), y = " ") + 
+  geom_text(aes(x = min_lambda + 0.002, y = max(val_loss) , label = paste('lambda', '==', round(min_lambda, 4))), parse = T, col = "red") +
+  labs(x = expression(lambda), y = "Error (categorical crossentropy)") + 
   theme_bw() + 
   theme(legend.title = element_blank(),
-        legend.position = "bottom")
+        legend.position = "top")
 
 grid.arrange(arrangeGrob(hl_nn_1, focus_nn_1, nrow = 1, ncol = 2))
 
@@ -2643,7 +2955,8 @@ ggplot(aes(x = lambda, y = error, colour = set, fill = set)) +
   scale_color_manual(values=c("blue", "black")) + 
   geom_vline(xintercept = min_lambda, linetype = "dashed", col = "red" ) +
   theme_bw() + 
-  theme(legend.position = "none")
+  theme(legend.position = "top",
+        legend.title = element_blank())
 
 ## Focused lambda values plot
 
@@ -2664,11 +2977,11 @@ focus_nn_2 <- nn_2_df %>%
   geom_vline(aes(xintercept = min_lambda), color = "red", linetype = "dashed"  ) + 
   scale_color_manual(breaks = c("Validation", "Train", "Validation smooth", "Train smooth"),
                      values = c("Validation" = "blue", "Train" = "black", "Validation smooth" = "lightblue" , "Train smooth" = "gray") ) +
-  geom_text(aes(x = min_lambda+0.006, y = max(val_loss) , label = paste('lambda', '==', round(min_lambda, 4))), parse = T, col = "red") +
-  labs(x = expression(lambda), y = " ") + 
+  geom_text(aes(x = min_lambda+0.0005, y = max(val_loss) , label = paste('lambda', '==', round(min_lambda, 4))), parse = T, col = "red") +
+  labs(x = expression(lambda), y = "Error (categorical crossentropy)") + 
   theme_bw() + 
   theme(legend.title = element_blank(),
-        legend.position = "bottom")
+        legend.position = "top")
 
 grid.arrange(arrangeGrob(hl_nn_2, focus_nn_2, nrow = 1, ncol = 2))
 
@@ -2677,8 +2990,8 @@ grid.arrange(arrangeGrob(hl_nn_2, focus_nn_2, nrow = 1, ncol = 2))
 
 # Note: This piece of code will be re-run to generate plots for network, transactional, and all features data sets
 
-nn_1 <- ls_runs(runs_dir = 'nn_1_high_level_T' ) 
-nn_2 <- ls_runs(runs_dir = 'nn_2_high_level_T')
+nn_1 <- ls_runs(runs_dir = 'nn_1_high_level' ) 
+nn_2 <- ls_runs(runs_dir = 'nn_2_high_level')
 
 data_combined <- data.frame(val_loss_mod_1 = nn_1$metric_val_loss,
                             val_loss_mod_2 = nn_2$metric_val_loss,
@@ -2697,7 +3010,7 @@ plot_HL <- data_combined %>%
                      values = c("(8)-Network" = "red", "(64)-Network" = "blue", "(8)-Network smooth" = "lightcoral" , "(64)-Network smooth" = "lightblue") ) +
   labs(x = expression(lambda), y = "Validation error (categorical crossentropy)") + 
   theme_bw() + 
-  theme(legend.position = "right",
+  theme(legend.position = "top",
         legend.title =element_blank() )
 
 
@@ -2732,7 +3045,7 @@ grid.arrange(arrangeGrob(plot_HL, plot_focus, nrow = 1, ncol = 2))
 
 ```
 
-5.2.3 Model construction and testing
+5.2.3 Model construction and testing - Error metric extraction runs
 
 ```{r, Model construction and testing - Neural network models - modelling }
 
@@ -2951,7 +3264,442 @@ nn_network_res$result_df$test_f1_score[1]
 
 ```
 
-6. Results interpretation
+
+5.2.4 Model construction and testing - Response curves generation
+
+Network feature data set
+
+```{r, model construction and testing - response curve generation}
+
+# Note: From the hyper-parameter tuning process, it was decided select the simple model (model 1) for all the data sets. It was because its validation error was very close to the more complex model (model 2). 
+
+# freeing memory
+rm(list=ls()[! ls() %in% c("train_all_features_nn","train_network_features_nn", "train_transactional_features_nn", "train_target_nn", "network_selected_values_list", "trans_selected_values_list", "all_selected_values_list")])
+
+
+# 1. Constructing models with "optimal" hyper parameters and generating response curves
+
+# 1.1 Network data model
+
+# 1.1.1 Extracting best lambda (from hyper-parameter tuning process)
+
+nn_net <- ls_runs(runs_dir = "nn_1_focused_net")
+min_lambda_net <- nn_net$flag_lambda[which(nn_net$metric_val_loss == min(nn_net$metric_val_loss))]
+
+# 1.1.2 Defining Keras model
+
+train_x <- train_network_features_nn
+train_y <- train_target_nn
+units <- 8
+min_lambda <- min_lambda_net
+  
+model <- keras_model_sequential()
+
+model %>% 
+  layer_dense(units = units, 
+              activation = 'relu', 
+              input_shape = c(dim(train_x)[2]),
+              kernel_regularizer = regularizer_l2(l = min_lambda)) %>%
+  layer_dense(units = 2, activation = 'softmax')
+
+# Compile model
+model %>% compile(loss = 'categorical_crossentropy',
+                  optimizer = 'adam',
+                  metrics = list('accuracy', metric_precision(), metric_recall(), metric_auc()))
+
+# Fit model
+history <- model %>% 
+  fit(train_x,
+      train_y,
+      epochs = 23,
+      batch_size = 100,
+      validation_split = 0.3)
+
+net_model <- model
+
+
+#(build other models here! Ttansactional and Combined)
+
+
+# 1.1.3 Constructing response curves
+
+# Note: The process of extracting the response curves involves  the generation of three data frames:
+# 1. A data frame that contains the equally spaced values for each predictor (from min to max) - "equally spaced df"
+# 2. A data frame that contains the repetitions of the equally spaced predictors (repetitions each M times) - "fixed df"
+# 3. A data frame of fixed chosen values (there are several of theses based of the chosen values)
+
+## Creating first df ("equally spaced" df)
+
+M <- 100 # M*M will be the row size of the equally spaced or repetition df's
+col_names <- colnames(train_x)
+eq_spaced_df <- data.frame(eq_space_number = 1:M)
+
+
+for (j in 1:dim(train_x)[2]) {
+  
+  current_pred <- rep(seq(min(train_x[,j]), max(train_x[,j]), length = M), M)
+  eq_spaced_df <- cbind(eq_spaced_df, current_pred )
+  
+}
+
+eq_spaced_df_final <- eq_spaced_df[,-1]
+names(eq_spaced_df_final) <- col_names
+
+## Creating second df ("repetition" df) repetition 
+
+repitition_df <- data.frame(repitition_number = 1:M)
+
+for (j in 1:dim(train_x)[2]) {
+  
+  current_pred <-  rep(seq(min(train_x[,j]), max(train_x[,j]), length = M), each = M)
+  repitition_df <- cbind(repitition_df, current_pred )
+  
+}
+
+repitition_df_final <- repitition_df[,-1]
+names(repitition_df_final) <- col_names
+
+## Creating third set of df's
+
+# Note: This is multiple df's. One of theses df represent fixed values chosen for each feature if we are plotting two variables on the x and y axis.
+
+
+# 1. Network data (NB! Going to have to do for trans and combined features)
+
+# Loading df's
+integer_df <- network_selected_values_list$integer_features_df
+numeric_df <- network_selected_values_list$numeric_features_df
+
+# 1.1 Numeric data
+
+# transposing df
+numeric_df_t <- as.data.frame(t(numeric_df))
+
+# duplicating rows and saving onto data frame
+numeric_values <- numeric_df_t[1,]
+numeric_final_rep_df <- numeric_df_t
+
+for (i in 1:(M*M-1)) {
+  
+  numeric_final_rep_df <- rbind(numeric_final_rep_df,numeric_values )
+  
+}
+
+# renaming row names
+row.names(numeric_final_rep_df) <- 1:(M*M)
+
+# 1.2 Integer data
+
+# extracting original order of names
+integer_col_names <- integer_df %>% 
+  select(-contains("count -"),
+         -contains("perc -"),
+         -contains("index")) %>% 
+  names()
+
+# naming single and two value variables
+two_value_variables <- c("total_degree", "non_fraud_degree", "out_degree", "out_degree_non_fraud")
+single_value_variables <- integer_col_names[!integer_col_names %in% two_value_variables]
+  
+# 1.2.1 Creating single value df
+sigle_value_integer_df <- integer_df[names(integer_df) %in% single_value_variables] %>% 
+  head(1)
+
+sigle_value_integer_df <- sigle_value_integer_df[rep(1, times = M*M),]
+
+row.names(sigle_value_integer_df) <- 1:(M*M)
+
+# 1.2.2 Creating two value df
+two_value_integer_df <- integer_df[names(integer_df) %in% two_value_variables] %>% 
+  head(2)
+
+# creating data frame to construct all possible combinations of two value features
+total_degree <- two_value_integer_df[,1]
+non_fraud_degree <- two_value_integer_df[,2]
+out_degree <- two_value_integer_df[,3]
+out_degree_non_fraud <- two_value_integer_df[,4]
+obj <- data.frame(total_degree = total_degree, 
+                  non_fraud_degree = non_fraud_degree,
+                  out_degree = out_degree,
+                  out_degree_non_fraud = out_degree_non_fraud)
+
+integer_combinations_df <- unique(expand.grid(obj))
+
+# 1.3 Constructing fixed value sets
+
+final_rep_df_list <- list()
+col_names_order <- names(as.data.frame(train_x))
+
+for (i in 1:nrow(integer_combinations_df)) {
+  
+  # configuring integer set (2 value)
+  current_integer_set <- integer_combinations_df[rep(i, times = M*M),]
+  row.names(current_integer_set) <- 1:(M*M)
+  
+  # joining numeric set, one value integers, and two value integers
+  final_current_rep_set <- cbind(current_integer_set, numeric_final_rep_df, sigle_value_integer_df)
+  
+  # changing column order names
+  final_current_rep_set <- final_current_rep_set[col_names_order]
+  
+  # saving results
+  final_rep_df_list[[i]] <- final_current_rep_set
+  
+}
+
+
+#### New Code - end ####
+
+## Creating fourth df ("prediction" df - combination of the df's already created)
+
+# Note: k will denote the current predictor of interest (the feature that will NOT be repeated in the plotting latice)
+
+# defining additional df's
+# diagnostic_df <- data_frame(predictor_name = col_names,
+#                             status = rep(NA, length(col_names)))
+# 
+# fraud_df <- as.data.frame(train_target_nn) %>% 
+#   mutate(fraud = if_else(V1 == 1, FALSE, TRUE)) %>% 
+#   select(fraud)
+# 
+# train_x_plot <- cbind(train_x, fraud_df)
+# 
+# 
+# start <- Sys.time()
+# 
+# for(k in 1:dim(train_x)[2]){
+#   
+#   # configuring df
+#   prediction_df <- repition_df_final
+#   prediction_df[,k] <- eq_spaced_df_final[,k]
+#   
+#   # making predictions with the model
+#   pred <-  data.frame(predict(net_model, as.matrix(prediction_df))) %>% 
+#     rename(non_fraud = X1,
+#            fraud = X2) 
+#   
+#   clss <- apply(pred, 1, which.max)
+#   cols <- c("blue", "red")
+#   
+#   
+#   if((1 %in% clss) & (2 %in% clss)){
+#     
+#     # making multiple plots
+#     pdf(file= paste0(col_names[k], "_response_curves.pdf"))
+#     
+#     for (i in 1:ncol(prediction_df)){
+#       
+#       plot(prediction_df[,i] ~ prediction_df[,k], 
+#            pch = 20, 
+#            col = cols[clss],
+#            xlab = col_names[k],
+#            ylab = col_names[i]
+#       )
+#       points(x = train_x_plot[,k][train_x_plot$fraud == FALSE], 
+#            y = train_x_plot[,i][train_x_plot$fraud == FALSE],
+#            col = "green")
+#     points(x = train_x_plot[,k][train_x_plot$fraud == TRUE], 
+#            y = train_x_plot[,i][train_x_plot$fraud == TRUE],
+#            col = "black")
+#       
+#     }
+#     diagnostic_df$status[k] <- "Both classes"
+#     
+#   } else if(1 %in% clss){
+#     
+#     diagnostic_df$status[k] <- "Only non-fraud"
+#     
+#   }else{
+#     
+#     diagnostic_df$status[k] <- "Only fraud"
+#     
+#   }
+#   
+# }
+# 
+# end <- Sys.time()
+
+#### NEW CODE TEST - start #####
+
+start <- Sys.time()
+
+# 1. Creating fourth df, performing prediction and generating curves.
+
+# 1.1 Defining fixed data frame to us for current iteration (will later loop through each of these)
+fixed_values_df <- final_rep_df_list[[1]]
+
+# 1.2 Defining nested for loops to create the needed prediction df and generate its curves
+
+## legend:
+# i is the counter for which predictor is currenly the independent variable (on x-axis).
+# j is the counter for for the predictor which is the dependent variable (on y-axis).
+# k is the counter which will ensure we do not generate a full matrix but only upper matrix.
+# p is the counter for the diagnostic df index
+
+# 1.2.1 Defining fixed variables before entering the loops
+
+# defining limit for plot  
+b <- c(0,0.5,1)
+
+# defining diagnostic df (i.e. will give a summary of all the plotted results)
+diagnostic_df <- data_frame(x_axis_predictor = rep(NA, dim(train_x)[2]*dim(train_x)[2]),
+                            y_axis_predictor = rep(NA, dim(train_x)[2]*dim(train_x)[2]),
+                            relationship = rep(NA,dim(train_x)[2]*dim(train_x)[2]),
+                            decision_boundry_strength = rep(NA,dim(train_x)[2]*dim(train_x)[2]))
+# defining counters
+k <- 0
+p <- 0
+
+# resetting df
+  prediction_df <- fixed_values_df # fixed data set values
+
+# entering first loop (independent variable loop)
+for(i in 1:dim(train_x)[2]){
+  
+  prediction_df[,i] <- eq_spaced_df_final[,i] # replacing independent predictor column
+  
+  # entering second loop (dependent variable loop)
+  for(j in (k+1):dim(train_x)[2]){
+    
+    current_prediction_df <- prediction_df # resetting df (for independent values)
+    
+    current_prediction_df[,j] <- repitition_df_final[,j] # replacing dependent predictor column
+    
+    # making predictions with the model
+    pred <-  data.frame(predict(net_model, as.matrix(current_prediction_df))) %>% 
+      rename(non_fraud = X1,
+             fraud = X2) 
+    
+    # inserting if condition for diagnostic df
+    
+    p <- p+1
+    
+    if(sum(pred$fraud > 0.65) > 0 & sum(pred$non_fraud > 0.65)){ # condition when there is evidence of variables being related to fraud
+      
+      # saving variables in diagnostic df
+      diagnostic_df$x_axis_predictor[p] <- col_names[i]
+      diagnostic_df$y_axis_predictor[p] <- col_names[j]
+      diagnostic_df$relationship[p] <- "Fraud relationship"
+      diagnostic_df$decision_boundry_strength[p] <- (max(pred$non_fraud) + max(pred$fraud))/2
+      
+      # generating plots (commented out to run faster)
+      plot_df <- data_frame(x=current_prediction_df[,i],
+                          y=current_prediction_df[,j],
+                          prob_fraud=pred$fraud )
+
+    current_plot <-  plot_df %>%
+      ggplot(aes(x=x, y=y)) +
+      geom_point(aes(colour = prob_fraud))  +
+      scale_colour_gradientn(limits = c(0,1),
+                             colours=c("blue", "white", "red"),
+                             breaks=b, labels=format(b)) +
+      labs(x = col_names[i], y = col_names[j])
+
+    ggsave(filename = paste0(col_names[j], "_VS_", col_names[i],".pdf"),
+           plot = current_plot,
+           path = "Response curves plots 10_05_2022/",
+           device = "pdf")
+    
+    }else{ # condition when there no evidence of variables being related to fraud
+      
+      # saving variables in diagnostic df
+      diagnostic_df$x_axis_predictor[p] <- col_names[i]
+      diagnostic_df$y_axis_predictor[p] <- col_names[j]
+      diagnostic_df$relationship[p] <- "No fraud relationship"
+      diagnostic_df$decision_boundry_strength[p] <- (max(pred$non_fraud) + max(pred$fraud))/2
+      
+    } # end if statement condition
+    
+  } # end independent variable loop
+  
+  # updating k to ensure only the upper matrix values are calculated
+  k <- k+1
+  
+} # end dependent variable loop
+  end <- Sys.time()
+  
+  # removing all NA values from diagnostic df
+  
+  diagnostic_df <- na.omit(diagnostic_df)
+  
+  # generating descriptive stats
+  diagnostic_df %>% 
+    filter(relationship == "Fraud relationship") %>% 
+    ggplot(aes(x = decision_boundry_strength)) +
+    geom_histogram()
+  
+
+#### NEW CODE TEST - end #####
+
+
+
+##### TEST #####
+
+# fraud_df <- as.data.frame(train_target_nn) %>% 
+#   mutate(fraud = if_else(V1 == 1, FALSE, TRUE)) %>% 
+#   select(fraud)
+# 
+# train_x_plot <- cbind(train_x, fraud_df)
+# 
+# 
+# k <- 3
+# # configuring df
+# prediction_df <- repition_df_final
+# prediction_df[,k] <- eq_spaced_df_final[,k]
+# 
+# # making predictions with the model
+# pred <-  data.frame(predict(net_model, as.matrix(prediction_df))) %>% 
+#   rename(non_fraud = X1,
+#          fraud = X2) 
+# 
+# clss <- apply(pred, 1, which.max)
+# cols <- c("blue", "red")
+# 
+# for (i in 1:ncol(prediction_df)){
+#   
+#   plot(prediction_df[,i] ~ prediction_df[,k], 
+#        pch = 20, 
+#        col = cols[clss],
+#        xlab = col_names[k],
+#        ylab = col_names[i])
+#   points(x = train_x_plot[,k][train_x_plot$fraud == FALSE], 
+#          y = train_x_plot[,i][train_x_plot$fraud == FALSE],
+#          col = "green")
+#   points(x = train_x_plot[,k][train_x_plot$fraud == TRUE], 
+#          y = train_x_plot[,i][train_x_plot$fraud == TRUE],
+#          col = "black")
+#   
+# }
+
+##### TEST #####
+
+
+
+
+
+
+##### IRIS example ####
+# newData <- iris
+# newData$Sepal.Length <- scale(newData$Sepal.Length)
+# newData$Sepal.Width<- scale(newData$Sepal.Width)
+# newData$Petal.Length <- scale(newData$Petal.Length)
+# newData$Petal.Width <- scale(newData$Petal.Width)
+# 
+# 
+# M <- 100
+# x1_dummy = seq(min(newData$Petal.Width), max(newData$Petal.Width), length = M)
+# x2_dummy = seq(min(newData$Petal.Length), max(newData$Petal.Length), length = M)
+# X1 <- rep(x1_dummy, M)
+# X2 <- rep(x2_dummy, each = M)
+# Lat <- data.frame(Petal.Width = X1, Petal.Length = X2)
+# 
+# plot(Lat$Petal.Length~Lat$Petal.Width, pch = 20)
+
+
+
+```
+
+# 6. Results interpretation
 
 ```{r, results interpretation}
 
@@ -3214,6 +3962,21 @@ results_df <- data.frame(data_set = c(rep("network",3),rep("transactional",3), r
                          
                          )
 
+# test accuracy
+results_df$test_acc[results_df$model == "NN_8" & results_df$data_set == "network"] <- 0.9861
+results_df$test_acc[results_df$model == "NN_8" & results_df$data_set == "transactional"] <- 0.9351
+results_df$test_acc[results_df$model == "NN_8" & results_df$data_set == "combined"] <- 0.9881
+
+# test f1
+results_df$test_f1_score[results_df$model == "NN_8" & results_df$data_set == "network"] <- 0.8851
+results_df$test_f1_score[results_df$model == "NN_8" & results_df$data_set == "transactional"] <- 0.3611
+results_df$test_f1_score[results_df$model == "NN_8" & results_df$data_set == "combined"] <- 0.8921
+
+# test balanced accuracy
+results_df$test_balanced_acc[results_df$model == "NN_8" & results_df$data_set == "network"] <- 0.9731
+results_df$test_balanced_acc[results_df$model == "NN_8" & results_df$data_set == "transactional"] <- 0.6521
+results_df$test_balanced_acc[results_df$model == "NN_8" & results_df$data_set == "combined"] <- 0.9541
+
 
 # 4. Visualisations
 
@@ -3225,7 +3988,8 @@ final_res_box <- results_df %>%
   labs(x = " ") +
   theme_bw() +
   scale_fill_brewer(name = "Data set", labels = c("Combined", "Network", "Transactional"), palette = "Dark2") + 
-  geom_boxplot()
+  geom_boxplot() + 
+theme(axis.text.y = element_blank())
 
 final_res_dense <- results_df %>% 
   ggplot(aes(x = test_f1_score, fill =data_set)) +
@@ -3243,7 +4007,8 @@ final_res_box <- results_df %>%
   labs(x = " ") +
   theme_bw() +
   scale_fill_brewer(name = "Data set", labels = c("Combined", "Network", "Transactional"), palette = "Dark2") + 
-  geom_boxplot()
+  geom_boxplot() + 
+theme(axis.text.y = element_blank())
 
 final_res_dense <- results_df %>% 
   ggplot(aes(x = test_balanced_acc, fill =data_set)) +
@@ -3265,7 +4030,7 @@ bar_test_acc <- results_df %>%
   scale_fill_brewer(palette = "Dark2", name = " ", labels = c("Logistic regression (PR)", "Logistic regression (ROC)", "(8)-Network") ) +
   geom_text(aes(label = round(test_acc,3)), position = position_dodge(width = 0.9), vjust = -0.1, size = 3) + 
   theme_bw() + 
-  theme(legend.position = "none",
+  theme(legend.position = "top",
         text = element_text(size = 10)) +
   labs(x = "Dataset", y = "Test accuracy")
 
@@ -3287,7 +4052,7 @@ bar_test_balanced_acc <- results_df %>%
   scale_fill_brewer(palette = "Dark2", name = " ", labels = c("Logistic regression (PR)", "Logistic regression (ROC)", "(8)-Network") ) +
   geom_text(aes(label = round(test_balanced_acc,3)), position = position_dodge(width = 0.9), vjust = -0.1, size = 2.5) + 
   theme_bw() + 
-  theme(legend.position = "none",
+  theme(legend.position = "top",
         text = element_text(size = 10)) +
   labs(x = "Dataset", y = "Test balanced accuracy")
 
@@ -3302,3 +4067,92 @@ ggarrange(
    
 ```
 
+
+
+```{r, unsused code}
+
+# 1. Network features
+
+#### TEMP ####
+
+# creating data frame - maybe usefull for later
+
+# network_data_type <- c("cont", "discr", "discr", "discr", "cont", "cont", "cont", "cont", "cont", "cont", "discr", "discr", "discr", "discr", "cont", "cont", "cont", "cont", "cont", "cont", "cont", "discr", "discr", "discr", "discr", "discr", "discr") 
+# 
+# network_feature_names <- names(train_network_features_nn_df)
+# 
+# network_features_df <- data.frame(feature_name = network_feature_names,
+#                                   data_type = network_data_type)
+
+#### TEMP ####
+
+#### TEMP - Manual implimenation ####
+
+# 1. Seeing how many unique values is in each feature
+
+train_network_features_nn_df <- as.data.frame(train_network_features_nn) %>% 
+  mutate(is_fraud = train_network_features$is_fraud)
+
+unique_length_func <- function(x){
+  length(unique(x))
+}
+
+short_length_net_feat <- apply(train_network_features_nn_df, 2, unique_length_func)
+short_length_net_feat <- short_length_net_feat[short_length_net_feat<50]
+
+# Note: Due to large number of discrete variable choices, we need to fix some values which we will look at when generating response curves. 
+
+# 2. Fixing values for discrete values with high number of "class" values 
+
+# Note: For all discrete values we need to see which had the highest fraud count.
+
+## transitivity
+net_trans <- train_network_features_nn_df %>% 
+  select(transitivity, is_fraud) %>% 
+  group_by(transitivity, is_fraud) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  head(10)
+ 
+net_trans %>% 
+  ggplot(aes(x = transitivity, y = count, fill = is_fraud)) +
+  geom_col() +
+  scale_y_log10()
+
+# Note: -0.09393306 (accounted for 98.5% of the data)
+
+## total degree
+net_total_degree <- train_network_features_nn_df %>% 
+  select(total_degree, is_fraud) %>% 
+  group_by(total_degree, is_fraud) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  head(10)
+ 
+net_total_degree %>% 
+  ggplot(aes(x = total_degree, y = count, fill = is_fraud)) +
+  geom_col() +
+  scale_y_log10()
+
+# Note: -0.18732548, -0.06853996, and, 0.05024557 (accounted for 90% of the data)
+
+## # fraud degree
+net_fraud_degree <- train_network_features_nn_df %>% 
+  select(fraud_degree, is_fraud) %>% 
+  group_by(fraud_degree, is_fraud) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  head(10)
+ 
+net_total_degree %>% 
+  ggplot(aes(x = total_degree, y = count, fill = is_fraud)) +
+  geom_col() +
+  scale_y_log10()
+
+#### TEMP - Manual implementation ####
+
+
+
+
+
+```
