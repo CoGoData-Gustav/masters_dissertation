@@ -3531,7 +3531,7 @@ for(i in 1:dim(train_x)[2]){
       # generating plots (based on decision boundry strength)
       
       if(diagnostic_df$decision_boundry_strength[p] > 0.95) {
-      
+
       plot_df <- data_frame(x=current_prediction_df[,i],
                           y=current_prediction_df[,j],
                           prob_fraud=pred$fraud )
@@ -3546,9 +3546,9 @@ for(i in 1:dim(train_x)[2]){
 
     ggsave(filename = paste0("SET_", r ,"_", col_names_short[j], "_VS_", col_names_short[i],".pdf"),
            plot = current_plot,
-           path = "Response curves plots 10_05_2022",
+           path = "Network response curves plots 09_06_2022",
            device = "pdf")
-        
+
       }
     
     }else{ # condition when there no evidence of variables being related to fraud
@@ -3647,15 +3647,15 @@ rm(list=ls()[! ls() %in% c("train_all_features_nn","train_network_features_nn", 
 
 # 1.1.1 Extracting best lambda (from hyper-parameter tuning process)
 
-nn_net <- ls_runs(runs_dir = "nn_1_focused_net")
-min_lambda_net <- nn_net$flag_lambda[which(nn_net$metric_val_loss == min(nn_net$metric_val_loss))]
+nn_trans <- ls_runs(runs_dir = "nn_1_focused_trans")
+min_lambda_trans <- nn_trans$flag_lambda[which(nn_trans$metric_val_loss == min(nn_trans$metric_val_loss))]
 
 # 1.1.2 Defining Keras model
 
-train_x <- train_network_features_nn
+train_x <- train_transactional_features_nn
 train_y <- train_target_nn
 units <- 8
-min_lambda <- min_lambda_net
+min_lambda <- min_lambda_trans
   
 model <- keras_model_sequential()
 
@@ -3679,7 +3679,7 @@ history <- model %>%
       batch_size = 100,
       validation_split = 0.3)
 
-net_model <- model
+trans_model <- model
 
 
 # 1.1.3 Constructing response curves
@@ -3724,11 +3724,373 @@ names(repitition_df_final) <- col_names
 
 # Note: This is multiple df's. One of theses df represent fixed values chosen for each feature if we are plotting two variables on the x and y axis.
 
-# 1. Network data (NB! Going to have to do for trans and combined features) - doing some data wrangling to get the data in the required form
+# 1. Transactional data - doing some data wrangling to get the data in the required form
 
 # Loading df's
-integer_df <- network_selected_values_list$integer_features_df
-numeric_df <- network_selected_values_list$numeric_features_df
+integer_df <- trans_selected_values_list$integer_features_df
+numeric_df <- trans_selected_values_list$numeric_features_df
+
+# 1.1 Numeric data
+
+# transposing df
+numeric_df_t <- as.data.frame(t(numeric_df))
+
+# duplicating rows and saving onto data frame
+numeric_values <- numeric_df_t[1,]
+numeric_final_rep_df <- numeric_df_t
+
+numeric_final_rep_df <- numeric_final_rep_df[rep(1, times = M*M),]
+
+# renaming row names
+row.names(numeric_final_rep_df) <- 1:(M*M)
+
+# 1.2 Integer data (NB!!! Hard coding was done)
+
+# extracting original order of names
+integer_col_names <- integer_df %>% 
+  select(-contains("count -"),
+         -contains("perc -"),
+         -contains("index")) %>% 
+  names()
+
+# naming single and two value variables
+two_value_variables <- c("receive_period_max", "receive_period_min", "payment_period_max", "payment_period_min") # this is user selected (based of percentages)
+
+single_value_variables <- integer_col_names[!integer_col_names %in% two_value_variables]
+  
+# 1.2.1 Creating single value df
+sigle_value_integer_df <- integer_df[names(integer_df) %in% single_value_variables] %>% 
+  head(1)
+
+sigle_value_integer_df <- sigle_value_integer_df[rep(1, times = M*M),]
+
+row.names(sigle_value_integer_df) <- 1:(M*M)
+
+# 1.2.2 Creating two value df
+two_value_integer_df <- integer_df[names(integer_df) %in% two_value_variables] %>% 
+  head(2)
+
+# creating data frame to construct all possible combinations of two value features
+receive_period_max <- two_value_integer_df[,1]
+receive_period_min <- two_value_integer_df[,2]
+payment_period_max <- two_value_integer_df[,3]
+payment_period_min <- two_value_integer_df[,4]
+obj <- data.frame(receive_period_max = receive_period_max, 
+                  receive_period_min = receive_period_min,
+                  payment_period_max = payment_period_max,
+                  payment_period_min = payment_period_min)
+
+integer_combinations_df <- unique(expand.grid(obj))
+
+# 1.3 Constructing fixed value sets
+
+final_rep_df_list <- list()
+col_names_order <- names(as.data.frame(train_x))
+
+for (i in 1:nrow(integer_combinations_df)) {
+  
+  # configuring integer set (2 value)
+  current_integer_set <- integer_combinations_df[rep(i, times = M*M),]
+  row.names(current_integer_set) <- 1:(M*M)
+  
+  # joining numeric set, one value integers, and two value integers
+  final_current_rep_set <- cbind(current_integer_set, numeric_final_rep_df, sigle_value_integer_df)
+  
+  # changing column order names
+  final_current_rep_set <- final_current_rep_set[col_names_order]
+  
+  # saving results
+  final_rep_df_list[[i]] <- final_current_rep_set
+  
+}
+
+# Note: We will run through each data set that is in final rep df list and generate the response curves.
+
+### RESPONSE CURVE GENERATION ####
+
+## legend:
+# r  is the counter for which data set variant is currently used.
+# i is the counter for which predictor is currenly the independent variable (on x-axis).
+# j is the counter for for the predictor which is the dependent variable (on y-axis).
+# k is the counter which will ensure we do not generate a full matrix but only upper matrix.
+# p is the counter for the diagnostic df index
+
+# Start of big outer loop:
+
+start <- Sys.time()
+
+# global variable(s)
+
+# final diagnostics result table
+diagnostic_df_final <- data.frame()
+
+# short version of column names
+
+col_names_short <- col_names
+col_names_short[which(col_names == "incoming_round_numbers_count")] <- "inc_round_num_count"
+col_names_short[which(col_names == "outgoing_round_numbers_count")] <- "out_round_num_count"
+
+#length(final_rep_df_list)
+
+for(r in 1:length(final_rep_df_list)){
+  
+  
+# 1. Creating fourth df, performing prediction and generating curves.
+
+# 1.1 Defining fixed data frame to us for current iteration (will later loop through each of these)
+fixed_values_df <- final_rep_df_list[[r]]
+
+# 1.2 Defining nested for loops to create the needed prediction df and generate its curves
+
+# 1.2.1 Defining fixed variables before entering the loops
+
+# defining limit for plot  
+b <- c(0,0.5,1)
+
+# defining diagnostic df (i.e. will give a summary of all the plotted results)
+diagnostic_df <- data_frame(x_axis_predictor = rep(NA, dim(train_x)[2]*dim(train_x)[2]),
+                            y_axis_predictor = rep(NA, dim(train_x)[2]*dim(train_x)[2]),
+                            relationship = rep(NA,dim(train_x)[2]*dim(train_x)[2]),
+                            decision_boundry_strength = rep(NA,dim(train_x)[2]*dim(train_x)[2]),
+                            permutation_number = rep(NA,dim(train_x)[2]*dim(train_x)[2]))
+
+# defining counters
+k <- 0
+p <- 0
+
+# resetting df
+  prediction_df <- fixed_values_df # fixed data set values
+
+# entering first loop (independent variable loop)
+for(i in 1:dim(train_x)[2]){
+  
+  prediction_df[,i] <- eq_spaced_df_final[,i] # replacing independent predictor column
+  
+  # entering second loop (dependent variable loop)
+  for(j in (k+1):dim(train_x)[2]){
+    
+    current_prediction_df <- prediction_df # resetting df (for independent values)
+    
+    current_prediction_df[,j] <- repitition_df_final[,j] # replacing dependent predictor column
+    
+    # making predictions with the model
+    pred <-  data.frame(predict(trans_model, as.matrix(current_prediction_df))) %>% 
+      rename(non_fraud = X1,
+             fraud = X2) 
+    
+    # inserting if condition for diagnostic df
+    
+    p <- p+1
+    
+    if(sum(pred$fraud > 0.7) > 0 & sum(pred$non_fraud > 0.7)){ # condition when there is evidence of variables being related to fraud
+      
+      # saving variables in diagnostic df
+      diagnostic_df$x_axis_predictor[p] <- col_names_short[i]
+      diagnostic_df$y_axis_predictor[p] <- col_names_short[j]
+      diagnostic_df$relationship[p] <- "Fraud relationship"
+      diagnostic_df$decision_boundry_strength[p] <- (max(pred$non_fraud) + max(pred$fraud))/2
+      diagnostic_df$permutation_number[p] <- r
+      
+      # generating plots (based on decision boundry strength)
+      
+      if(diagnostic_df$decision_boundry_strength[p] > 0.99998) {
+
+      plot_df <- data_frame(x=current_prediction_df[,i],
+                          y=current_prediction_df[,j],
+                          prob_fraud=pred$fraud )
+
+    current_plot <-  plot_df %>%
+      ggplot(aes(x=x, y=y)) +
+      geom_point(aes(colour = prob_fraud))  +
+      scale_colour_gradientn(limits = c(0,1),
+                             colours=c("blue", "white", "red"),
+                             breaks=b, labels=format(b)) +
+      labs(x = col_names_short[i], y = col_names_short[j])
+
+    ggsave(filename = paste0("SET_", r ,"_", col_names_short[j], "_VS_", col_names_short[i],".pdf"),
+           plot = current_plot,
+           path = "Trans response curves plots 09_06_2022",
+           device = "pdf")
+
+      }
+    
+    }else{ # condition when there no evidence of variables being related to fraud
+      
+      # saving variables in diagnostic df
+      diagnostic_df$x_axis_predictor[p] <- col_names_short[i]
+      diagnostic_df$y_axis_predictor[p] <- col_names_short[j]
+      diagnostic_df$relationship[p] <- "No fraud relationship"
+      diagnostic_df$decision_boundry_strength[p] <- (max(pred$non_fraud) + max(pred$fraud))/2
+      diagnostic_df$permutation_number[p] <- r
+      
+    } # end if statement condition
+    
+  } # end independent variable loop
+  
+  # updating k to ensure only the upper matrix values are calculated
+  k <- k+1
+  
+} # end dependent variable loop
+  
+  
+  # removing all NA from diagnostic df
+  diagnostic_df <- na.omit(diagnostic_df)
+  
+  diagnostic_df_final <- rbind(diagnostic_df_final, diagnostic_df)
+  
+  
+
+} # end big outer loop
+  end <- Sys.time()
+  
+## Analyzing diagnostic df
+  
+  # summary of x and y predictors
+  
+  diagnostic_df_final_plots <- diagnostic_df_final %>% 
+    filter(decision_boundry_strength> 0.99998) %>% 
+    group_by(x_axis_predictor,y_axis_predictor) %>% 
+    summarise(count = n()) %>% 
+    mutate(predictors = paste0(y_axis_predictor, " VS " , x_axis_predictor)) %>% 
+    arrange(desc(count))
+  
+  # analysis of x-predictors
+  
+  x_predictors_unique <- diagnostic_df_final %>% 
+    filter(decision_boundry_strength> 0.95) %>% 
+    group_by(x_axis_predictor) %>% 
+    summarise(count = n()) %>% 
+    arrange(desc(count)) %>% 
+    mutate(perc_of_plots = count/sum(count)*100)
+  
+  # analysis of y-predictors
+  
+  y_predictors_unique <- diagnostic_df_final %>% 
+    filter(decision_boundry_strength> 0.95) %>% 
+    group_by(y_axis_predictor) %>% 
+    summarise(count = n()) %>% 
+    arrange(desc(count)) %>% 
+    mutate(perc_of_plots = count/sum(count)*100)
+  
+  # plot of x and y predictors
+  x_predictors_unique$x_axis_predictor <- factor(x_predictors_unique$x_axis_predictor ) %>% 
+    fct_reorder(x_predictors_unique$perc_of_plots)
+  
+  x <- x_predictors_unique %>% 
+    ggplot(aes(y = perc_of_plots, x = x_axis_predictor)) + 
+    geom_col() +
+    coord_flip()
+  
+  y_predictors_unique$y_axis_predictor <- factor(y_predictors_unique$y_axis_predictor) %>% 
+    fct_reorder(y_predictors_unique$perc_of_plots)
+  
+ y <-y_predictors_unique %>% 
+    ggplot(aes(y = perc_of_plots, x = y_axis_predictor)) + 
+    geom_col() +
+    coord_flip()
+  
+  
+  ggarrange(y, x, ncol = 1, nrow = 2)
+
+```
+
+II) Combined
+
+```{r, model construction and testing - response curve generation - Combined model}
+
+# Note: From the hyper-parameter tuning process, it was decided select the simple model (model 1) for all the data sets. It was because its validation error was very close to the more complex model (model 2). 
+
+# freeing memory
+rm(list=ls()[! ls() %in% c("train_all_features_nn","train_network_features_nn", "train_transactional_features_nn", "train_target_nn", "network_selected_values_list", "trans_selected_values_list", "all_selected_values_list")])
+
+# 1. Constructing models with "optimal" hyper parameters and generating response curves
+
+# 1.1 Network data model
+
+# 1.1.1 Extracting best lambda (from hyper-parameter tuning process)
+
+nn_all <- ls_runs(runs_dir = "nn_1_focused_all")
+min_lambda_all <- nn_all$flag_lambda[which(nn_all$metric_val_loss == min(nn_all$metric_val_loss))]
+
+# 1.1.2 Defining Keras model
+
+train_x <- train_all_features_nn
+train_y <- train_target_nn
+units <- 8
+min_lambda <- min_lambda_all
+  
+model <- keras_model_sequential()
+
+model %>% 
+  layer_dense(units = units, 
+              activation = 'relu', 
+              input_shape = c(dim(train_x)[2]),
+              kernel_regularizer = regularizer_l2(l = min_lambda)) %>%
+  layer_dense(units = 2, activation = 'softmax')
+
+# Compile model
+model %>% compile(loss = 'categorical_crossentropy',
+                  optimizer = 'adam',
+                  metrics = list('accuracy', metric_precision(), metric_recall(), metric_auc()))
+
+# Fit model
+history <- model %>% 
+  fit(train_x,
+      train_y,
+      epochs = 23,
+      batch_size = 100,
+      validation_split = 0.3)
+
+combined_model <- model
+
+
+# 1.1.3 Constructing response curves
+
+# Note: The process of extracting the response curves involves the generation of three data frames:
+# 1. A data frame that contains the equally spaced values for each predictor (from min to max) - "equally spaced df"
+# 2. A data frame that contains the repetitions of the equally spaced predictors (repetitions each M times) - "fixed df"
+# 3. A data frame of fixed chosen values (there are several of theses based of the chosen values)
+
+## Creating first df ("equally spaced" df)
+
+M <- 100 # M*M will be the row size of the equally spaced or repetition df's
+col_names <- colnames(train_x)
+eq_spaced_df <- data.frame(eq_space_number = 1:M)
+
+
+for (j in 1:dim(train_x)[2]) {
+  
+  current_pred <- rep(seq(min(train_x[,j]), max(train_x[,j]), length = M), M)
+  eq_spaced_df <- cbind(eq_spaced_df, current_pred )
+  
+}
+
+eq_spaced_df_final <- eq_spaced_df[,-1]
+names(eq_spaced_df_final) <- col_names
+
+## Creating second df ("repetition" df) repetition 
+
+repitition_df <- data.frame(repitition_number = 1:M)
+
+for (j in 1:dim(train_x)[2]) {
+  
+  current_pred <-  rep(seq(min(train_x[,j]), max(train_x[,j]), length = M), each = M)
+  repitition_df <- cbind(repitition_df, current_pred )
+  
+}
+
+repitition_df_final <- repitition_df[,-1]
+names(repitition_df_final) <- col_names
+
+## Creating third set of df's
+
+# Note: This is multiple df's. One of theses df represent fixed values chosen for each feature if we are plotting two variables on the x and y axis.
+
+# 1. Transactional data - doing some data wrangling to get the data in the required form
+
+# Loading df's
+integer_df <- all_selected_values_list$integer_features_df
+numeric_df <- all_selected_values_list$numeric_features_df
 
 # 1.1 Numeric data
 
@@ -3755,6 +4117,7 @@ integer_col_names <- integer_df %>%
 
 # naming single and two value variables
 two_value_variables <- c("total_degree", "non_fraud_degree", "out_degree", "out_degree_non_fraud") # this is user selected (based of percentages)
+
 single_value_variables <- integer_col_names[!integer_col_names %in% two_value_variables]
   
 # 1.2.1 Creating single value df
@@ -3805,7 +4168,6 @@ for (i in 1:nrow(integer_combinations_df)) {
 
 # Note: We will run through each data set that is in final rep df list and generate the response curves.
 
-
 ### RESPONSE CURVE GENERATION ####
 
 ## legend:
@@ -3831,6 +4193,10 @@ col_names_short[which(col_names == "probabilistic_relational_neighbour_fraud")] 
 col_names_short[which(col_names == "probabilistic_relational_neighbour_not_fraud")] <- "prob_rel_neigh_not_fraud"
 col_names_short[which(col_names == "relational_neighbour_fraud")] <- "relation_neigh"
 col_names_short[which(col_names == "relational_neighbour_not_fraud")] <- "relation_neigh_not_fraud"
+col_names_short[which(col_names == "incoming_round_numbers_count")] <- "inc_round_num_count"
+col_names_short[which(col_names == "outgoing_round_numbers_count")] <- "out_round_num_count"
+
+#length(final_rep_df_list)
 
 for(r in 1:length(final_rep_df_list)){
   
@@ -3841,8 +4207,6 @@ for(r in 1:length(final_rep_df_list)){
 fixed_values_df <- final_rep_df_list[[r]]
 
 # 1.2 Defining nested for loops to create the needed prediction df and generate its curves
-
-
 
 # 1.2.1 Defining fixed variables before entering the loops
 
@@ -3876,7 +4240,7 @@ for(i in 1:dim(train_x)[2]){
     current_prediction_df[,j] <- repitition_df_final[,j] # replacing dependent predictor column
     
     # making predictions with the model
-    pred <-  data.frame(predict(net_model, as.matrix(current_prediction_df))) %>% 
+    pred <-  data.frame(predict(combined_model, as.matrix(current_prediction_df))) %>% 
       rename(non_fraud = X1,
              fraud = X2) 
     
@@ -3895,7 +4259,7 @@ for(i in 1:dim(train_x)[2]){
       
       # generating plots (based on decision boundry strength)
       
-      if(diagnostic_df$decision_boundry_strength[p] > 0.95) {
+      if(diagnostic_df$decision_boundry_strength[p] > 0.988) {
       
       plot_df <- data_frame(x=current_prediction_df[,i],
                           y=current_prediction_df[,j],
@@ -3911,7 +4275,7 @@ for(i in 1:dim(train_x)[2]){
 
     ggsave(filename = paste0("SET_", r ,"_", col_names_short[j], "_VS_", col_names_short[i],".pdf"),
            plot = current_plot,
-           path = "Response curves plots 10_05_2022",
+           path = "Combined response curves plots 09_06_2022",
            device = "pdf")
         
       }
@@ -3945,12 +4309,12 @@ for(i in 1:dim(train_x)[2]){
 } # end big outer loop
   end <- Sys.time()
   
-## Analysing diagnostic df
+## Analyzing diagnostic df
   
   # summary of x and y predictors
   
   diagnostic_df_final_plots <- diagnostic_df_final %>% 
-    filter(decision_boundry_strength> 0.95) %>% 
+    filter(decision_boundry_strength> 0.988) %>% 
     group_by(x_axis_predictor,y_axis_predictor) %>% 
     summarise(count = n()) %>% 
     mutate(predictors = paste0(y_axis_predictor, " VS " , x_axis_predictor)) %>% 
@@ -3993,7 +4357,6 @@ for(i in 1:dim(train_x)[2]){
   
   
   ggarrange(y, x, ncol = 1, nrow = 2)
-
 
 ```
 
