@@ -999,7 +999,7 @@ prob_relational_neighbor_classifier_func <- function(graph, relational_neig_prob
       select(relational_neig_prob_fraud) %>% 
       sum()
     
-    # calculating number of # non-fraud neighbors
+    # calculating number of # non-fraud neighbor
     temp_count_non_fraud <- temp_df %>% 
       filter(name != node_names[i]) %>% 
       select(relational_neig_prob_non_fraud) %>% 
