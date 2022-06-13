@@ -1993,7 +1993,9 @@ log_LASSO_model_network <- glmnet(x = as.matrix(train_network_features[,-c(ncol(
 
 plot(log_LASSO_model_network, xvar = 'lambda', label=TRUE)
 
-### New
+
+# 2.1 Generating coeficient plots
+
 coef_matrix_df <- data.frame(as.list(log_LASSO_model_network$beta[1,]))
 
 
@@ -2021,28 +2023,69 @@ coef_df <- pivot_longer(coef_matrix_df,
 coef_df$label <- NA
 coef_df$label[which(coef_df$number == max(coef_df$number))] <- coef_df$number_char[which(coef_df$number == max(coef_df$number))]
 
+zero_coef_predictors <- coef_df %>% 
+  mutate(abs_coef = abs(coef_value)) %>% 
+  group_by(predictors, number_char) %>% 
+  summarise(sum_coef = sum(abs_coef)) %>% 
+  filter(sum_coef == 0)
 
 
-# visualization
+## Coefficient visualizations
 
-coef_df %>% 
-  ggplot(aes(y = coef_value, x = log_lambda_value, col = predictors)) +
-  geom_line() +
-  geom_label_repel(aes(label = label),
-                   nudge_x = -4,
-                   nudge_y = 0.5,
-                   na.rm = TRUE,
-                   max.overlaps = dim(log_LASSO_model_network$beta)[1]) +
-  xlim(-15, max(log(log_LASSO_model_network$lambda))) +
+
+predictors_non_zero_coef <- coef_df %>% 
+  filter(!predictors %in% zero_coef_predictors$predictors)
+
+large_coef_useful_LR_predictors <-  predictors_non_zero_coef %>% 
+  mutate(abs_coef = abs(coef_value)) %>% 
+  group_by(predictors, number_char) %>% 
+  summarise(sum_coef = sum(abs_coef)) %>% 
+  arrange(desc(sum_coef)) %>% 
+  head(8)
+
+LR_plot_net_predictors_1 <- predictors_non_zero_coef %>%
+  filter(predictors %in% large_coef_useful_LR_predictors$predictors)
+  
+LR_plot_net_predictors_2 <- predictors_non_zero_coef %>%
+  filter(!predictors %in% large_coef_useful_LR_predictors$predictors)
+
+# plot 1
+LR_plot_net_predictors_1 %>% 
+  ggplot(aes(y = coef_value, x = log_lambda_value, col = predictors, lty = )) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 0) +
+  # geom_label_repel(aes(label = label),
+  #                  nudge_x = -4,
+  #                  nudge_y = 0.5,
+  #                  na.rm = TRUE,
+  #                  max.overlaps = dim(log_LASSO_model_network$beta)[1]) +
+  # xlim(-10.5,max(log(log_LASSO_model_network$lambda))) +
+  geom_vline(xintercept = min(log(log_LASSO_model_network$lambda)), 
+             linetype = "dashed") +
+  labs(y = "Predictor coefficient value", x = expression(Log(lambda))) +
   
   theme_bw() +
-  theme(legend.position = "none")
+  theme(legend.position = "top", legend.title = element_blank())
+
+
+# plot 1
+LR_plot_net_predictors_2 %>% 
+  ggplot(aes(y = coef_value, x = log_lambda_value, col = predictors, lty = )) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 0) +
+  # geom_label_repel(aes(label = label),
+  #                  nudge_x = -4,
+  #                  nudge_y = 0.5,
+  #                  na.rm = TRUE,
+  #                  max.overlaps = dim(log_LASSO_model_network$beta)[1]) +
+  # xlim(-10.5,max(log(log_LASSO_model_network$lambda))) +
+  ylim(-1, 1) +
+  geom_vline(xintercept = min(log(log_LASSO_model_network$lambda)), 
+             linetype = "dashed") +
+  labs(y = "Predictor coefficient value", x = expression(Log(lambda))) +
   
-
-
-
-### New
-
+  theme_bw() +
+  theme(legend.position = "top", legend.title = element_blank())
 
 
 
@@ -2057,9 +2100,103 @@ log_LASSO_model_trans <- glmnet(x = as.matrix(train_transactional_features[,-c(n
 plot(log_LASSO_model_trans, xvar = 'lambda', label=TRUE)
 
 
+# Generating coeficient plots
+
+coef_matrix_df <- data.frame(as.list(log_LASSO_model_trans$beta[1,]))
+
+
+for (i in 2:dim(log_LASSO_model_trans$beta)[1]) {
+  
+  current_predictor <- data.frame(as.list(log_LASSO_model_trans$beta[i,])) 
+
+  coef_matrix_df <- rbind(coef_matrix_df, current_predictor)
+  
+}
+
+
+coef_matrix_df$predictors <- names(train_transactional_features[,-c(ncol(train_transactional_features))])
+
+# pivot longer
+
+coef_df <- pivot_longer(coef_matrix_df,
+                        cols = 1:ncol(coef_matrix_df)-1,
+                        names_to = "lambda_itter", 
+                        values_to = "coef_value" ) %>% 
+  mutate(log_lambda_value = rep(log(log_LASSO_model_trans$lambda),dim(log_LASSO_model_trans$beta)[1])) %>% 
+  mutate(number =  rep(1:dim(log_LASSO_model_trans$beta)[2],dim(log_LASSO_model_trans$beta)[1])) %>% 
+  mutate(number_char = as.character(rep(1:dim(log_LASSO_model_trans$beta)[1], each = dim(log_LASSO_model_trans$beta)[2])))
+
+coef_df$label <- NA
+coef_df$label[which(coef_df$number == max(coef_df$number))] <- coef_df$number_char[which(coef_df$number == max(coef_df$number))]
+
+zero_coef_predictors <- coef_df %>% 
+  mutate(abs_coef = abs(coef_value)) %>% 
+  group_by(predictors, number_char) %>% 
+  summarise(sum_coef = sum(abs_coef)) %>% 
+  filter(sum_coef == 0)
+
+
+## Coefficient visualizations
+
+
+predictors_non_zero_coef <- coef_df %>% 
+  filter(!predictors %in% zero_coef_predictors$predictors)
+
+large_coef_useful_LR_predictors <-  predictors_non_zero_coef %>% 
+  mutate(abs_coef = abs(coef_value)) %>% 
+  group_by(predictors, number_char) %>% 
+  summarise(sum_coef = sum(abs_coef)) %>% 
+  arrange(desc(sum_coef)) %>% 
+  head(7)
+
+LR_plot_trans_predictors_1 <- predictors_non_zero_coef %>%
+  filter(predictors %in% large_coef_useful_LR_predictors$predictors)
+  
+LR_plot_trans_predictors_2 <- predictors_non_zero_coef %>%
+  filter(!predictors %in% large_coef_useful_LR_predictors$predictors)
+
+# plot 1
+LR_plot_trans_predictors_1 %>% 
+  ggplot(aes(y = coef_value, x = log_lambda_value, col = predictors, lty = )) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 0) +
+  # geom_label_repel(aes(label = label),
+  #                  nudge_x = -4,
+  #                  nudge_y = 0.5,
+  #                  na.rm = TRUE,
+  #                  max.overlaps = dim(log_LASSO_model_network$beta)[1]) +
+  # xlim(-10.5,max(log(log_LASSO_model_network$lambda))) +
+  geom_vline(xintercept = min(log(log_LASSO_model_trans$lambda)), 
+             linetype = "dashed") +
+  labs(y = "Predictor coefficient value", x = expression(Log(lambda))) +
+  
+  theme_bw() +
+  theme(legend.position = "top", legend.title = element_blank())
+
+
+# plot 1
+LR_plot_trans_predictors_2 %>% 
+  ggplot(aes(y = coef_value, x = log_lambda_value, col = predictors, lty = )) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 0) +
+  # geom_label_repel(aes(label = label),
+  #                  nudge_x = -4,
+  #                  nudge_y = 0.5,
+  #                  na.rm = TRUE,
+  #                  max.overlaps = dim(log_LASSO_model_network$beta)[1]) +
+  # xlim(-10.5,max(log(log_LASSO_model_network$lambda))) +
+  geom_vline(xintercept = min(log(log_LASSO_model_trans$lambda)), 
+             linetype = "dashed") +
+  labs(y = "Predictor coefficient value", x = expression(Log(lambda))) +
+  
+  theme_bw() +
+  theme(legend.position = "top", legend.title = element_blank())
+
+
+
 # all features
 
-log_LASSO_model_all <- glmnet(x = as.matrix(train_all_features[,-c(1,ncol(train_all_features))]),
+log_LASSO_model_all <- glmnet(x = as.matrix(train_all_features[,-c(ncol(train_all_features))]),
                                                 y = train_all_features$is_fraud, 
                                                 alpha = 1, 
                                                 standardize = FALSE, 
@@ -2067,7 +2204,98 @@ log_LASSO_model_all <- glmnet(x = as.matrix(train_all_features[,-c(1,ncol(train_
 
 plot(log_LASSO_model_all, xvar = 'lambda', label=TRUE)
 
+# Generating coefficient plots
 
+coef_matrix_df <- data.frame(as.list(log_LASSO_model_all$beta[1,]))
+
+
+for (i in 2:dim(log_LASSO_model_all$beta)[1]) {
+  
+  current_predictor <- data.frame(as.list(log_LASSO_model_all$beta[i,])) 
+
+  coef_matrix_df <- rbind(coef_matrix_df, current_predictor)
+  
+}
+
+
+coef_matrix_df$predictors <- names(train_all_features[,-c(ncol(train_all_features))])
+
+# pivot longer
+
+coef_df <- pivot_longer(coef_matrix_df,
+                        cols = 1:ncol(coef_matrix_df)-1,
+                        names_to = "lambda_itter", 
+                        values_to = "coef_value" ) %>% 
+  mutate(log_lambda_value = rep(log(log_LASSO_model_all$lambda),dim(log_LASSO_model_all$beta)[1])) %>% 
+  mutate(number =  rep(1:dim(log_LASSO_model_all$beta)[2],dim(log_LASSO_model_all$beta)[1])) %>% 
+  mutate(number_char = as.character(rep(1:dim(log_LASSO_model_all$beta)[1], each = dim(log_LASSO_model_all$beta)[2])))
+
+coef_df$label <- NA
+coef_df$label[which(coef_df$number == max(coef_df$number))] <- coef_df$number_char[which(coef_df$number == max(coef_df$number))]
+
+zero_coef_predictors <- coef_df %>% 
+  mutate(abs_coef = abs(coef_value)) %>% 
+  group_by(predictors, number_char) %>% 
+  summarise(sum_coef = sum(abs_coef)) %>% 
+  filter(sum_coef < 0.00001)
+
+
+## Coefficient visualizations
+
+
+predictors_non_zero_coef <- coef_df %>% 
+  filter(!predictors %in% zero_coef_predictors$predictors)
+
+large_coef_useful_LR_predictors <-  predictors_non_zero_coef %>% 
+  mutate(abs_coef = abs(coef_value)) %>% 
+  group_by(predictors, number_char) %>% 
+  summarise(sum_coef = sum(abs_coef)) %>% 
+  arrange(desc(sum_coef)) %>% 
+  head(16)
+
+LR_plot_trans_predictors_1 <- predictors_non_zero_coef %>%
+  filter(predictors %in% large_coef_useful_LR_predictors$predictors)
+  
+LR_plot_trans_predictors_2 <- predictors_non_zero_coef %>%
+  filter(!predictors %in% large_coef_useful_LR_predictors$predictors)
+
+# plot 1
+LR_plot_trans_predictors_1 %>% 
+  ggplot(aes(y = coef_value, x = log_lambda_value, col = predictors, lty = )) +
+  geom_line(size = 0.6) +
+  geom_hline(yintercept = 0) +
+  # geom_label_repel(aes(label = label),
+  #                  nudge_x = -4,
+  #                  nudge_y = 0.5,
+  #                  na.rm = TRUE,
+  #                  max.overlaps = dim(log_LASSO_model_network$beta)[1]) +
+  # xlim(-10.5,max(log(log_LASSO_model_network$lambda))) +
+  #ylim(-5,5) +
+  geom_vline(xintercept = min(log(log_LASSO_model_all$lambda)), 
+             linetype = "dashed") +
+  labs(y = "Predictor coefficient value", x = expression(Log(lambda))) +
+  
+  theme_bw() +
+  theme(legend.position = "top", legend.title = element_blank())
+
+
+# plot 2
+LR_plot_trans_predictors_2 %>% 
+  ggplot(aes(y = coef_value, x = log_lambda_value, col = predictors, lty = )) +
+  geom_line(size = 0.6) +
+  geom_hline(yintercept = 0) +
+  # geom_label_repel(aes(label = label),
+  #                  nudge_x = -4,
+  #                  nudge_y = 0.5,
+  #                  na.rm = TRUE,
+  #                  max.overlaps = dim(log_LASSO_model_network$beta)[1]) +
+  # xlim(-10.5,max(log(log_LASSO_model_network$lambda))) +
+  geom_vline(xintercept = min(log(log_LASSO_model_all$lambda)), 
+             linetype = "dashed") +
+  labs(y = "Predictor coefficient value", x = expression(Log(lambda))) +
+  
+  theme_bw() +
+  theme(legend.position = "top", legend.title = element_blank())
 
 # 3.1 Applying 10-fold CV to determine optimal lambda value
 
